@@ -491,11 +491,11 @@ function TasksView({
   const [sectionFilter, setSectionFilter] = useState<SectionKey | "all">("all");
   const visibleTasks = sectionFilter === "all" ? tasks : tasks.filter((task) => task.section === sectionFilter);
 
-  function createTask(event: FormEvent<HTMLFormElement>) {
+  async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const assigneeId = String(form.get("assigneeId") || "");
-    const task: Task = {
+    const fallbackTask: Task = {
       id: `t${Date.now()}`,
       title: String(form.get("title")),
       section: form.get("section") as SectionKey,
@@ -506,6 +506,25 @@ function TasksView({
       due: String(form.get("due")),
       notes: String(form.get("notes")),
     };
+    let task = fallbackTask;
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: fallbackTask.title,
+          section: fallbackTask.section,
+          assigneeId: fallbackTask.assigneeId,
+          priority: fallbackTask.priority,
+          due: fallbackTask.due,
+          notes: fallbackTask.notes,
+        }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { task: Task };
+        task = data.task;
+      }
+    } catch {}
     setTasks((current) => [task, ...current]);
     event.currentTarget.reset();
   }
@@ -1581,8 +1600,19 @@ export function App() {
   }, [active, role, setActive]);
 
   const content = useMemo(() => {
-    const updateTaskStatus = (taskId: string, status: TaskStatus) => {
+    const updateTaskStatus = async (taskId: string, status: TaskStatus) => {
       setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, status } : task)));
+      try {
+        const response = await fetch(`/api/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+        if (response.ok) {
+          const data = (await response.json()) as { task: Task };
+          setTasks((current) => current.map((task) => (task.id === taskId ? data.task : task)));
+        }
+      } catch {}
     };
     const updateAssignmentStatus = (eventId: string, assignmentId: string, status: LiveEventAssignment["status"]) => {
       setEvents((current) =>
