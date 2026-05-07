@@ -184,40 +184,33 @@ async function handleInteraction(interaction: ChatInputCommandInteraction) {
 if (process.argv.includes("--invite-url")) {
   console.log(botInviteUrl());
   await prisma.$disconnect();
-  process.exit(0);
-}
-
-if (process.argv.includes("--register-only")) {
+} else if (process.argv.includes("--register-only")) {
   await registerCommands();
   await prisma.$disconnect();
-  process.exit(0);
-}
-
-if (!token) {
+} else if (!token) {
   console.log("WTUS bot not started. Set DISCORD_BOT_TOKEN.");
   await prisma.$disconnect();
-  process.exit(0);
-}
+} else {
+  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  client.once(Events.ClientReady, (readyClient) => {
+    console.log(`WTUS bot signed in as ${readyClient.user.tag}.`);
+  });
 
-client.once(Events.ClientReady, (readyClient) => {
-  console.log(`WTUS bot signed in as ${readyClient.user.tag}.`);
-});
-
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-  try {
-    await handleInteraction(interaction);
-  } catch (error) {
-    console.error(error);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: "Dashboard command failed.", ephemeral: true });
-    } else {
-      await interaction.reply({ content: "Dashboard command failed.", ephemeral: true });
+  client.on(Events.InteractionCreate, async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    try {
+      await handleInteraction(interaction);
+    } catch (error) {
+      console.error(error);
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ content: "Dashboard command failed.", ephemeral: true });
+      } else {
+        await interaction.reply({ content: "Dashboard command failed.", ephemeral: true });
+      }
     }
-  }
-});
+  });
 
-await registerCommands();
-await client.login(token);
+  await registerCommands();
+  await client.login(token);
+}
