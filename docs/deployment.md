@@ -109,9 +109,12 @@ The first bot entrypoint is `bot/index.ts`.
 Use these commands on the VPS after environment variables are set:
 
 ```bash
+pnpm bot:invite
 pnpm bot:register
 pnpm bot:start
 ```
+
+Open the `pnpm bot:invite` URL once to install the bot into the WTUS Discord server. The invite must use the same Discord application as `DISCORD_CLIENT_ID` and include both `bot` and `applications.commands` scopes. If command registration returns `Missing Access`, the bot is not installed in `DISCORD_GUILD_ID` or it was invited with the wrong application/scopes.
 
 Run `pnpm bot:register` after command changes. Run `pnpm bot:start` under systemd or the same process manager used for the web app.
 

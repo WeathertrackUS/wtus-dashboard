@@ -10,6 +10,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "build": "prisma generate && next build",
+    "bot:invite": "tsx bot/index.ts --invite-url",
     "bot:register": "tsx bot/index.ts --register-only",
     "bot:start": "tsx bot/index.ts",
     "start": "node .next/standalone/server.js",

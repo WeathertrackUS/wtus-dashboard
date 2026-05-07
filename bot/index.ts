@@ -14,6 +14,7 @@ import type { AvailabilityStatus } from "../src/types";
 const token = process.env.DISCORD_BOT_TOKEN;
 const clientId = process.env.DISCORD_CLIENT_ID;
 const guildId = process.env.DISCORD_GUILD_ID;
+const botPermissions = "2147486720";
 
 const commands = [
   new SlashCommandBuilder().setName("wtus").setDescription("Check the WTUS bot connection"),
@@ -44,8 +45,28 @@ async function registerCommands() {
   }
 
   const rest = new REST({ version: "10" }).setToken(token);
-  await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
+  try {
+    await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
+  } catch (error) {
+    const discordError = error as { code?: number; status?: number };
+    if (discordError.code === 50001 || discordError.status === 403) {
+      console.error("Discord rejected command registration with Missing Access.");
+      console.error("Make sure this exact bot application is installed in the WTUS server with the bot and applications.commands scopes.");
+      console.error(`Invite URL: ${botInviteUrl()}`);
+    }
+    throw error;
+  }
   console.log("WTUS bot commands registered.");
+}
+
+function botInviteUrl() {
+  if (!clientId) return "Set DISCORD_CLIENT_ID first.";
+  const params = new URLSearchParams({
+    client_id: clientId,
+    scope: "bot applications.commands",
+    permissions: botPermissions,
+  });
+  return `https://discord.com/oauth2/authorize?${params.toString()}`;
 }
 
 async function findDashboardUser(discordUserId: string) {
@@ -158,6 +179,12 @@ async function handleInteraction(interaction: ChatInputCommandInteraction) {
   if (interaction.commandName === "mytasks") await handleTasks(interaction);
   if (interaction.commandName === "available") await handleAvailability(interaction);
   if (interaction.commandName === "eventroles") await handleEventRoles(interaction);
+}
+
+if (process.argv.includes("--invite-url")) {
+  console.log(botInviteUrl());
+  await prisma.$disconnect();
+  process.exit(0);
 }
 
 if (process.argv.includes("--register-only")) {
