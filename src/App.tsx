@@ -593,6 +593,42 @@ function TasksView({
     event.currentTarget.reset();
   }
 
+  async function editSelectedTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedTask) return;
+    const form = new FormData(event.currentTarget);
+    const updatedTask: Task = {
+      ...selectedTask,
+      title: String(form.get("title")),
+      section: form.get("section") as SectionKey,
+      assigneeId: String(form.get("assigneeId") || ""),
+      ownerId: String(form.get("assigneeId") || "") || selectedTask.ownerId,
+      priority: form.get("priority") as Priority,
+      due: String(form.get("due")),
+      notes: String(form.get("notes")),
+    };
+    let task = updatedTask;
+    try {
+      const response = await fetch(`/api/tasks/${selectedTask.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: updatedTask.title,
+          section: updatedTask.section,
+          assigneeId: updatedTask.assigneeId,
+          priority: updatedTask.priority,
+          due: updatedTask.due,
+          notes: updatedTask.notes,
+        }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { task: Task };
+        task = data.task;
+      }
+    } catch {}
+    setTasks((current) => current.map((item) => (item.id === selectedTask.id ? task : item)));
+  }
+
   return (
     <div className="two-column-page">
       <section className="panel wide">
@@ -639,6 +675,54 @@ function TasksView({
               </label>
               <button className="primary-button" type="submit">
                 Add update
+              </button>
+            </form>
+            <form className="stack-form task-edit-form" key={selectedTask.id} onSubmit={editSelectedTask}>
+              <label>
+                Title
+                <input name="title" defaultValue={selectedTask.title} />
+              </label>
+              <label>
+                Section
+                <select name="section" defaultValue={selectedTask.section}>
+                  {sections.map((section) => (
+                    <option key={section.key} value={section.key}>
+                      {section.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Point person
+                <select name="assigneeId" defaultValue={selectedTask.assigneeId}>
+                  <option value="">Unassigned</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Priority
+                <select name="priority" defaultValue={selectedTask.priority}>
+                  {(Object.keys(priorityLabels) as Priority[]).map((priority) => (
+                    <option key={priority} value={priority}>
+                      {priorityLabels[priority]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Due
+                <input name="due" defaultValue={selectedTask.due} />
+              </label>
+              <label>
+                Notes
+                <textarea name="notes" defaultValue={selectedTask.notes} />
+              </label>
+              <button className="primary-button" type="submit">
+                Save task
               </button>
             </form>
           </div>

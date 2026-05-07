@@ -442,6 +442,12 @@ select:disabled {
   padding-top: 16px;
 }
 
+.task-edit-form {
+  border-top: 1px solid #eef2f6;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
 .comment-list {
   display: grid;
   gap: 8px;
