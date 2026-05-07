@@ -1,5 +1,5 @@
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import type { NextAuthOptions } from "next-auth";
+import type { Account, NextAuthOptions, Profile, User } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
 import { prisma } from "./db";
 
@@ -12,6 +12,41 @@ type DiscordGuild = {
 type DiscordProfile = {
   username?: string;
 };
+
+async function syncDiscordUser(user: User, account: Account, profile?: Profile) {
+  if (!user.id || account.provider !== "discord") return;
+
+  const discordUserId = account.providerAccountId;
+  const discordProfile = profile as DiscordProfile | undefined;
+  const discordUsername = typeof discordProfile?.username === "string" ? discordProfile.username : null;
+  const guildVerified = await isDiscordGuildMember(account.access_token);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      discordUserId,
+      discordHandle: discordUsername,
+      discordServerVerified: guildVerified,
+      onboardingStatus: guildVerified ? "verified" : "pending",
+      status: guildVerified ? "active" : "invited",
+    },
+  });
+
+  await prisma.discordAccount.upsert({
+    where: { discordUserId },
+    update: {
+      userId: user.id,
+      discordUsername,
+    },
+    create: {
+      userId: user.id,
+      discordUserId,
+      discordUsername,
+    },
+  });
+
+  await ensureVerifiedMemberAccess(user.id, guildVerified);
+}
 
 async function isDiscordGuildMember(accessToken?: string) {
   if (!discordGuildId || !accessToken) return false;
@@ -77,30 +112,15 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ account, profile, user }) {
       if (account?.provider !== "discord") return true;
-      const discordUserId = account.providerAccountId;
-      const discordProfile = profile as DiscordProfile | undefined;
-      const discordUsername = typeof discordProfile?.username === "string" ? discordProfile.username : null;
-      const guildVerified = await isDiscordGuildMember(account.access_token);
 
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          discordUserId,
-          discordHandle: discordUsername,
-          discordServerVerified: guildVerified,
-          onboardingStatus: guildVerified ? "verified" : "pending",
-          status: guildVerified ? "active" : "invited",
-          discordAccounts: {
-            upsert: {
-              where: { discordUserId },
-              update: { discordUsername },
-              create: { discordUserId, discordUsername },
-            },
-          },
-        },
-      });
+      const existingUser = user.id
+        ? await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { id: true },
+          })
+        : null;
 
-      await ensureVerifiedMemberAccess(user.id, guildVerified);
+      if (existingUser) await syncDiscordUser(user, account, profile);
 
       return true;
     },
@@ -128,6 +148,11 @@ export const authOptions: NextAuthOptions = {
         session.user.globalRoles = member?.globalRoles.map((assignment) => assignment.role.key) ?? [];
       }
       return session;
+    },
+  },
+  events: {
+    async linkAccount({ user, account }) {
+      if (account.provider === "discord") await syncDiscordUser(user, account);
     },
   },
   pages: {
