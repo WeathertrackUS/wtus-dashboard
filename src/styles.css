@@ -221,6 +221,20 @@ select:disabled {
   color: #ffffff;
 }
 
+.auth-button {
+  border: 1px solid #dfe5ee;
+  background: #ffffff;
+  color: #526075;
+  border-radius: 8px;
+  padding: 9px 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .role-context {
   display: inline-flex;
   align-items: center;
@@ -892,6 +906,10 @@ label {
     width: 100%;
   }
 
+  .auth-button {
+    width: 100%;
+  }
+
   .role-switcher button {
     flex: 1;
     min-width: 0;
@@ -1091,6 +1109,7 @@ label {
 .role-context,
 .search-box,
 .role-switcher,
+.auth-button,
 .metric,
 .panel,
 .onboarding-status > div,
@@ -1164,12 +1183,18 @@ textarea::placeholder {
 }
 
 .primary-button,
-.text-button {
+.text-button,
+.auth-button {
   color: #ffffff;
 }
 
 .text-button {
   color: #ff4b55;
+}
+
+.auth-button {
+  background: rgba(14, 17, 24, 0.86);
+  border-color: rgba(255, 255, 255, 0.09);
 }
 
 .task-table th {

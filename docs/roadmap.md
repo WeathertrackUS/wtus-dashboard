@@ -10,7 +10,7 @@ Tasks:
 - Decide the starting stack
 - Initialize the app
 - Add linting, formatting, and basic test scripts
-- Create the first database schema
+- Create the first database schema and seed roles/sections
 - Document the VPS deployment target and production requirements
 
 ## Phase 1: App Foundation

@@ -1,0 +1,390 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum GlobalRoleKey {
+  owner
+  operations_lead
+  member
+}
+
+enum SectionKey {
+  finance
+  forecasting
+  nowcasting
+  youtube
+  graphics
+  facebook
+  development
+  verification
+}
+
+enum SectionRole {
+  lead
+  member
+}
+
+enum UserStatus {
+  active
+  inactive
+  invited
+}
+
+enum OnboardingStatus {
+  pending
+  verified
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  blocked
+  review
+  done
+}
+
+enum TaskPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum AvailabilityStatus {
+  available
+  maybe
+  unavailable
+}
+
+enum LiveEventStatus {
+  planned
+  active
+  paused
+  ended
+  cancelled
+}
+
+enum AssignmentStatus {
+  assigned
+  active
+  paused
+  done
+}
+
+enum CoverageScope {
+  global
+  section
+  live_event
+}
+
+enum CoverageStatus {
+  scheduled
+  active
+  ended
+  cancelled
+}
+
+enum InviteStatus {
+  open
+  used
+  disabled
+}
+
+model User {
+  id                    String                  @id @default(cuid())
+  name                  String?
+  email                 String?                 @unique
+  emailVerified         DateTime?
+  image                 String?
+  handle                String?
+  avatarUrl             String?
+  discordUserId         String?                 @unique
+  discordHandle         String?
+  discordServerVerified Boolean                 @default(false)
+  onboardingStatus      OnboardingStatus        @default(pending)
+  status                UserStatus              @default(invited)
+  accounts              Account[]
+  sessions              Session[]
+  globalRoles           UserGlobalRole[]
+  sectionMemberships    SectionMembership[]
+  createdTasks          Task[]                  @relation("TaskCreatedBy")
+  assignedTasks         Task[]                  @relation("TaskAssignedTo")
+  taskComments          TaskComment[]
+  availabilityWindows   AvailabilityWindow[]
+  availabilityUpdates   AvailabilityUpdate[]
+  liveEventsCreated     LiveEvent[]             @relation("LiveEventCreatedBy")
+  liveEventAssignments  LiveEventAssignment[]
+  assignedEventRoles    LiveEventAssignment[]   @relation("LiveEventAssignedBy")
+  onboardingInvitesMade OnboardingInvite[]      @relation("OnboardingInviteCreatedBy")
+  onboardingInviteUsed  OnboardingInvite[]      @relation("OnboardingInviteUsedBy")
+  coverageAssigned      TemporaryRoleCoverage[] @relation("CoverageAssignee")
+  coverageFor           TemporaryRoleCoverage[] @relation("CoverageCoveredUser")
+  coverageCreated       TemporaryRoleCoverage[] @relation("CoverageCreatedBy")
+  discordAccounts       DiscordAccount[]
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model GlobalRole {
+  id          String           @id @default(cuid())
+  key         GlobalRoleKey    @unique
+  name        String
+  assignments UserGlobalRole[]
+  coverages   TemporaryRoleCoverage[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model UserGlobalRole {
+  userId String
+  roleId String
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   GlobalRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model Section {
+  id             String                  @id @default(cuid())
+  key            SectionKey              @unique
+  name           String
+  description    String
+  memberships    SectionMembership[]
+  tasks          Task[]
+  availability   AvailabilityWindow[]
+  eventAssignments LiveEventAssignment[]
+  alertChannels  DiscordAlertChannel[]
+  coverages      TemporaryRoleCoverage[]
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+}
+
+model SectionMembership {
+  id        String      @id @default(cuid())
+  userId    String
+  sectionId String
+  role      SectionRole @default(member)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section   Section     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([userId, sectionId])
+}
+
+model Task {
+  id            String          @id @default(cuid())
+  title         String
+  description   String?
+  sectionId     String?
+  status        TaskStatus      @default(todo)
+  priority      TaskPriority    @default(normal)
+  assigneeId    String?
+  createdById   String?
+  dueAt         DateTime?
+  completedAt   DateTime?
+  section       Section?        @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  assignee      User?           @relation("TaskAssignedTo", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy     User?           @relation("TaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  comments      TaskComment[]
+  liveEvents    LiveEventTask[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String?
+  body      String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AvailabilityWindow {
+  id        String             @id @default(cuid())
+  eventName String?
+  userId    String
+  sectionId String?
+  helpRole  String
+  startsAt  DateTime
+  endsAt    DateTime
+  status    AvailabilityStatus @default(available)
+  notes     String?
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section   Section?           @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  updates   AvailabilityUpdate[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
+model AvailabilityUpdate {
+  id                   String             @id @default(cuid())
+  availabilityWindowId String
+  userId               String?
+  body                 String
+  availabilityWindow   AvailabilityWindow @relation(fields: [availabilityWindowId], references: [id], onDelete: Cascade)
+  user                 User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+}
+
+model LiveEvent {
+  id          String                @id @default(cuid())
+  name        String
+  description String?
+  status      LiveEventStatus       @default(planned)
+  startsAt    DateTime
+  endsAt      DateTime?
+  briefing    String?
+  createdById String?
+  createdBy   User?                 @relation("LiveEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  roles       LiveEventRole[]
+  assignments LiveEventAssignment[]
+  tasks       LiveEventTask[]
+  coverages   TemporaryRoleCoverage[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+}
+
+model LiveEventRole {
+  id          String                @id @default(cuid())
+  liveEventId String
+  name        String
+  description String?
+  liveEvent   LiveEvent             @relation(fields: [liveEventId], references: [id], onDelete: Cascade)
+  assignments LiveEventAssignment[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+}
+
+model LiveEventAssignment {
+  id              String           @id @default(cuid())
+  liveEventId     String
+  userId          String
+  liveEventRoleId String
+  sectionId       String?
+  region          String?
+  platform        String?
+  status          AssignmentStatus @default(assigned)
+  notes           String?
+  assignedById    String?
+  liveEvent       LiveEvent        @relation(fields: [liveEventId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  liveEventRole   LiveEventRole    @relation(fields: [liveEventRoleId], references: [id], onDelete: Cascade)
+  section         Section?         @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  assignedBy      User?            @relation("LiveEventAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model LiveEventTask {
+  liveEventId String
+  taskId      String
+  liveEvent   LiveEvent @relation(fields: [liveEventId], references: [id], onDelete: Cascade)
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([liveEventId, taskId])
+}
+
+model TemporaryRoleCoverage {
+  id            String         @id @default(cuid())
+  assigneeUserId String
+  coveredUserId  String?
+  globalRoleId   String?
+  sectionId      String?
+  liveEventId    String?
+  scope          CoverageScope
+  coverageRole   String
+  reason         String?
+  startsAt       DateTime
+  endsAt         DateTime
+  status         CoverageStatus @default(scheduled)
+  createdById    String?
+  assignee       User           @relation("CoverageAssignee", fields: [assigneeUserId], references: [id], onDelete: Cascade)
+  coveredUser    User?          @relation("CoverageCoveredUser", fields: [coveredUserId], references: [id], onDelete: SetNull)
+  globalRole     GlobalRole?    @relation(fields: [globalRoleId], references: [id], onDelete: SetNull)
+  section        Section?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  liveEvent      LiveEvent?     @relation(fields: [liveEventId], references: [id], onDelete: SetNull)
+  createdBy      User?          @relation("CoverageCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model DiscordAccount {
+  id              String   @id @default(cuid())
+  userId          String
+  discordUserId   String   @unique
+  discordUsername String?
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model OnboardingInvite {
+  id              String       @id @default(cuid())
+  token           String       @unique
+  label           String
+  createdByUserId String?
+  status          InviteStatus @default(open)
+  usedByUserId    String?
+  usedAt          DateTime?
+  createdBy       User?        @relation("OnboardingInviteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  usedBy          User?        @relation("OnboardingInviteUsedBy", fields: [usedByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model DiscordAlertChannel {
+  id        String   @id @default(cuid())
+  guildId   String
+  channelId String
+  sectionId String?
+  alertType String
+  section   Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, channelId, alertType, sectionId])
+}

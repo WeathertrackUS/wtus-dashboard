@@ -9,6 +9,8 @@ import {
   Command,
   LayoutDashboard,
   ListChecks,
+  LogIn,
+  LogOut,
   Plus,
   RadioTower,
   Search,
@@ -20,6 +22,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import { initialAvailability, initialCoverage, initialEvents, initialMembers, initialTasks, sections } from "./data";
 import wtusLogo from "../wtusredlogotransparent.png";
 import type {
@@ -176,6 +179,8 @@ function AppShell({
   children: React.ReactNode;
 }) {
   const visibleNav = navItems.filter((item) => (canManageTeam(role) ? opsNavItems : memberNavItems).includes(item.id));
+  const { data: session, status } = useSession();
+  const isSignedIn = status === "authenticated";
 
   return (
     <div className="app-shell">
@@ -220,6 +225,10 @@ function AppShell({
                 </button>
               ))}
             </div>
+            <button className="auth-button" type="button" onClick={() => (isSignedIn ? signOut() : signIn("discord"))}>
+              {isSignedIn ? <LogOut size={16} /> : <LogIn size={16} />}
+              <span>{isSignedIn ? session.user?.name ?? "Sign out" : "Discord"}</span>
+            </button>
           </div>
         </header>
         {children}

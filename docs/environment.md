@@ -13,7 +13,8 @@ Use `.env.example` as the shared checklist for required variables.
 For local development, start with:
 
 ```env
-APP_URL=http://localhost:5173
+APP_URL=http://localhost:3000
+NEXTAUTH_URL=http://localhost:3000
 AUTH_SECRET=replace-with-a-long-random-secret
 DATABASE_URL=postgresql://wtus:wtus@localhost:5432/wtus_dashboard
 ```
