@@ -166,6 +166,8 @@ Production/auth/Discord configuration starts from `.env.example`. Put real local
 - [Environment Setup](docs/environment.md)
 - [Consolidation Notes](docs/consolidation-notes.md)
 
+Deployment starter templates live in `deploy/`.
+
 ## MVP Build Order
 
 1. Add comments/activity history on tasks.

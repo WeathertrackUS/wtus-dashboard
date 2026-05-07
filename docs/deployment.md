@@ -90,6 +90,14 @@ pnpm bot:start
 
 Run `pnpm bot:register` after command changes. Run `pnpm bot:start` under systemd or the same process manager used for the web app.
 
+Starter service and proxy templates live in `deploy/`:
+
+- `deploy/wtus-dashboard.service`
+- `deploy/wtus-bot.service`
+- `deploy/nginx.conf.example`
+
+Copy them to the VPS, adjust paths, user, and domain, then enable the services with systemd.
+
 Automation can come later after the app is stable.
 
 ## Security Notes

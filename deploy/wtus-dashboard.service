@@ -1,0 +1,16 @@
+[Unit]
+Description=WTUS Operations Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/wtus-dashboard
+EnvironmentFile=/opt/wtus-dashboard/.env
+ExecStart=/usr/bin/pnpm start
+Restart=always
+RestartSec=5
+User=wtus
+Group=wtus
+
+[Install]
+WantedBy=multi-user.target
