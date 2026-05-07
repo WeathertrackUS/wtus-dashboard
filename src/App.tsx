@@ -757,10 +757,10 @@ function EventsView({
   const [eventId, setEventId] = useState(events[0]?.id ?? "");
   const activeEvent = events.find((event) => event.id === eventId) ?? events[0];
 
-  function createEvent(event: FormEvent<HTMLFormElement>) {
+  async function createEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const newEvent: LiveEvent = {
+    const fallbackEvent: LiveEvent = {
       id: `e${Date.now()}`,
       name: String(form.get("name")),
       description: String(form.get("description")),
@@ -770,18 +770,36 @@ function EventsView({
       roles: [{ id: `er${Date.now()}`, name: String(form.get("roleName")), description: "Custom event role" }],
       assignments: [],
     };
+    let newEvent = fallbackEvent;
+    try {
+      const response = await fetch("/api/live-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: fallbackEvent.name,
+          description: fallbackEvent.description,
+          startsAt: fallbackEvent.startsAt,
+          briefing: fallbackEvent.briefing,
+          roleName: fallbackEvent.roles[0]?.name,
+        }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { event: LiveEvent };
+        newEvent = data.event;
+      }
+    } catch {}
     setEvents((current) => [newEvent, ...current]);
     setEventId(newEvent.id);
     event.currentTarget.reset();
   }
 
-  function addAssignment(event: FormEvent<HTMLFormElement>) {
+  async function addAssignment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeEvent) return;
     const form = new FormData(event.currentTarget);
     const memberId = String(form.get("memberId") || "");
     if (!memberId) return;
-    const assignment: LiveEventAssignment = {
+    const fallbackAssignment: LiveEventAssignment = {
       id: `ea${Date.now()}`,
       memberId,
       roleId: String(form.get("roleId")),
@@ -791,6 +809,18 @@ function EventsView({
       status: "assigned",
       notes: String(form.get("notes")),
     };
+    let assignment = fallbackAssignment;
+    try {
+      const response = await fetch(`/api/live-events/${activeEvent.id}/assignments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallbackAssignment),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { assignment: LiveEventAssignment };
+        assignment = data.assignment;
+      }
+    } catch {}
     setEvents((current) =>
       current.map((item) => (item.id === activeEvent.id ? { ...item, assignments: [assignment, ...item.assignments] } : item)),
     );
@@ -1626,7 +1656,7 @@ export function App() {
         }
       } catch {}
     };
-    const updateAssignmentStatus = (eventId: string, assignmentId: string, status: LiveEventAssignment["status"]) => {
+    const updateAssignmentStatus = async (eventId: string, assignmentId: string, status: LiveEventAssignment["status"]) => {
       setEvents((current) =>
         current.map((event) =>
           event.id === eventId
@@ -1639,6 +1669,28 @@ export function App() {
             : event,
         ),
       );
+      try {
+        const response = await fetch(`/api/live-events/${eventId}/assignments/${assignmentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+        if (response.ok) {
+          const data = (await response.json()) as { assignment: LiveEventAssignment };
+          setEvents((current) =>
+            current.map((event) =>
+              event.id === eventId
+                ? {
+                    ...event,
+                    assignments: event.assignments.map((assignment) =>
+                      assignment.id === assignmentId ? data.assignment : assignment,
+                    ),
+                  }
+                : event,
+            ),
+          );
+        }
+      } catch {}
     };
 
     if (active === "tasks") return <TasksView tasks={tasks} members={members} setTasks={setTasks} onTaskStatus={updateTaskStatus} />;
