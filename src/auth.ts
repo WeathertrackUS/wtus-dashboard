@@ -20,6 +20,11 @@ async function syncDiscordUser(user: User, account: Account, profile?: Profile) 
   const discordProfile = profile as DiscordProfile | undefined;
   const discordUsername = typeof discordProfile?.username === "string" ? discordProfile.username : null;
   const guildVerified = await isDiscordGuildMember(account.access_token);
+  const existingUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { onboardingStatus: true, status: true },
+  });
+  const isOnboarded = existingUser?.onboardingStatus === "verified" && existingUser.status === "active";
 
   await prisma.user.update({
     where: { id: user.id },
@@ -27,8 +32,8 @@ async function syncDiscordUser(user: User, account: Account, profile?: Profile) 
       discordUserId,
       discordHandle: discordUsername,
       discordServerVerified: guildVerified,
-      onboardingStatus: "pending",
-      status: "invited",
+      onboardingStatus: isOnboarded ? "verified" : "pending",
+      status: isOnboarded ? "active" : "invited",
     },
   });
 
