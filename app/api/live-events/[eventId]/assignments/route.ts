@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../../src/db";
+import { requireGlobalOperator } from "../../../../../src/server/permissions";
 import type { LiveEventAssignment, SectionKey } from "../../../../../src/types";
 
 const sectionKeys: SectionKey[] = ["finance", "forecasting", "nowcasting", "youtube", "graphics", "facebook", "development", "verification"];
 
 export async function POST(request: Request, context: { params: Promise<{ eventId: string }> }) {
+  const access = await requireGlobalOperator();
+  if ("response" in access) return access.response;
+
   const { eventId } = await context.params;
   const body = (await request.json().catch(() => null)) as {
     memberId?: string;
@@ -34,6 +38,7 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
       platform: body?.platform?.trim() || null,
       notes: body?.notes?.trim() || null,
       status: "assigned",
+      assignedById: access.access.userId,
     },
     include: { section: true },
   });

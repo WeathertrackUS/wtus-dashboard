@@ -61,6 +61,17 @@ Recommended first approach:
 3. Check whether that Discord user is in `DISCORD_GUILD_ID`.
 4. Let the bot handle ongoing Discord commands and alerts.
 
+### First Owner Setup
+
+After the database is migrated and seeded, the first Discord user who signs in and passes the WTUS guild check is automatically assigned:
+
+- `member`
+- `owner`
+
+That gives the initial operator a clean way to open the dashboard, create onboarding links, and add the operations lead without manually editing the database.
+
+After that first owner exists, new verified Discord users get the `member` global role. Owner and operations lead role changes should happen from the dashboard's member management flow.
+
 ### Discord Developer Portal Setup
 
 In the Discord Developer Portal, open the WTUS application and set:
@@ -77,6 +88,20 @@ Common causes of Discord's invalid OAuth link:
 - The redirect URI is not listed in OAuth2 redirects.
 - `NEXTAUTH_URL` does not match the host and port being used.
 - The app was not restarted after changing `.env`.
+
+## Onboarding Links
+
+Owner and operations lead users create invite links from Team Setup.
+
+The invite page expects the incoming member to connect Discord first. The dashboard then uses the signed-in Discord account instead of trusting a manually typed Discord user ID.
+
+The invite completion route requires:
+
+- A valid open invite token
+- A signed-in Discord OAuth session
+- A verified match against `DISCORD_GUILD_ID`
+
+Used or disabled invite links cannot complete onboarding.
 
 ## Discord Bot
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../src/db";
+import { requireGlobalOperator } from "../../../src/server/permissions";
 import type { Member, SectionKey } from "../../../src/types";
 
 const sectionKeys: SectionKey[] = ["finance", "forecasting", "nowcasting", "youtube", "graphics", "facebook", "development", "verification"];
@@ -31,6 +32,9 @@ function toMember(user: {
 }
 
 export async function POST(request: Request) {
+  const access = await requireGlobalOperator();
+  if ("response" in access) return access.response;
+
   const body = (await request.json().catch(() => null)) as {
     name?: string;
     handle?: string;

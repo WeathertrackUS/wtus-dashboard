@@ -116,9 +116,11 @@ This repository currently contains a Next.js + React + TypeScript operations das
 - Availability entry creation
 - Live event creation with event-specific role assignments
 - Invite-link onboarding flow outside the main dashboard chrome
+- Discord OAuth-backed invite completion
 - Owner/operations onboarding link management in Team Setup
 - Account page for members to edit their team preferences
 - Section, Discord bot, and team setup views
+- Server-side permission checks for dashboard data and mutating app APIs
 
 Members and availability are not hard-coded. Test/demo data should stay limited to tests or future seed scripts.
 
@@ -164,15 +166,12 @@ Production/auth/Discord configuration starts from `.env.example`. Put real local
 
 ## MVP Build Order
 
-1. Replace local browser persistence with the real app database.
-2. Add auth and real permissions.
-3. Add Discord OAuth or bot-assisted onboarding verification.
-4. Verify that signups are in the WTUS Discord server.
-5. Add comments/activity history on tasks.
-6. Add editable live event roles after event creation.
-7. Add the first WTUS Discord bot commands and alerts.
-8. Add VPS production deployment config.
-9. Add automated tests for the core workflows.
+1. Add comments/activity history on tasks.
+2. Add editable live event roles after event creation.
+3. Add temporary coverage management screens backed by the existing schema.
+4. Add the first WTUS Discord bot commands and alerts.
+5. Add VPS production deployment config.
+6. Add automated tests for the core workflows.
 
 ## What Not To Build Yet
 

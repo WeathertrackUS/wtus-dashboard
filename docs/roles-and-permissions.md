@@ -149,9 +149,11 @@ Section leads can help maintain their section member list and suggest role chang
 
 Owner and operations lead can create, disable, and review onboarding links.
 
-Onboarding should not be a normal dashboard tab. A new member should receive a link, land on a focused onboarding page, connect their Discord identity, and choose the teams they want to be part of.
+Onboarding should not be a normal dashboard tab. A new member should receive a link, land on a focused onboarding page, connect their Discord identity with OAuth, and choose the teams they want to be part of.
 
 Members can later update their member-focused team preferences from their account page. Lead assignments and global roles stay in the owner/operations setup area.
+
+The first verified Discord user to sign in becomes the initial owner so the local or VPS install can be administered without direct database edits. After that, owner and operations lead users manage global roles from the dashboard.
 
 ## Data Shape
 

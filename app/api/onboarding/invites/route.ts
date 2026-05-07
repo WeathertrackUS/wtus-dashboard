@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../src/db";
+import { requireGlobalOperator } from "../../../../src/server/permissions";
 import type { OnboardingInvite } from "../../../../src/types";
 
 function toInvite(invite: {
@@ -23,12 +24,16 @@ function toInvite(invite: {
 }
 
 export async function POST(request: Request) {
+  const access = await requireGlobalOperator();
+  if ("response" in access) return access.response;
+
   const body = (await request.json().catch(() => null)) as { label?: string } | null;
   const invite = await prisma.onboardingInvite.create({
     data: {
       token: randomUUID(),
       label: body?.label?.trim() || "New member",
       status: "open",
+      createdByUserId: access.access.userId,
     },
   });
 

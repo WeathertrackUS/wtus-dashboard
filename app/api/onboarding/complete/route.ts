@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../src/db";
+import { requireCurrentUser } from "../../../../src/server/permissions";
 import type { Member, SectionKey } from "../../../../src/types";
 
 const sectionKeys: SectionKey[] = ["finance", "forecasting", "nowcasting", "youtube", "graphics", "facebook", "development", "verification"];
@@ -10,21 +11,22 @@ function cleanSections(value: unknown): SectionKey[] {
 }
 
 export async function POST(request: Request) {
+  const access = await requireCurrentUser();
+  if ("response" in access) return access.response;
+
   const body = (await request.json().catch(() => null)) as {
     token?: string;
     name?: string;
     handle?: string;
-    discordUserId?: string;
     sections?: unknown;
   } | null;
 
   const token = body?.token?.trim();
   const name = body?.name?.trim();
   const handle = body?.handle?.trim().replace(/^@/, "");
-  const discordUserId = body?.discordUserId?.trim();
   const selectedSections = cleanSections(body?.sections);
 
-  if (!token || !name || !handle || !discordUserId) {
+  if (!token || !name || !handle) {
     return NextResponse.json({ error: "Missing required onboarding fields" }, { status: 400 });
   }
 
@@ -36,23 +38,14 @@ export async function POST(request: Request) {
   const result = await prisma.$transaction(async (tx) => {
     const memberRole = await tx.globalRole.findUnique({ where: { key: "member" } });
     const sections = await tx.section.findMany({ where: { key: { in: selectedSections } } });
-    const user = await tx.user.upsert({
-      where: { discordUserId },
-      update: {
+    const user = await tx.user.update({
+      where: { id: access.access.userId },
+      data: {
         name,
         handle,
-        discordUserId,
         discordHandle: handle,
-        onboardingStatus: "pending",
-        status: "invited",
-      },
-      create: {
-        name,
-        handle,
-        discordUserId,
-        discordHandle: handle,
-        onboardingStatus: "pending",
-        status: "invited",
+        onboardingStatus: "verified",
+        status: "active",
       },
     });
 
@@ -86,7 +79,7 @@ export async function POST(request: Request) {
         id: user.id,
         name: user.name ?? name,
         handle: user.handle ?? handle,
-        discordUserId: user.discordUserId ?? discordUserId,
+        discordUserId: user.discordUserId ?? undefined,
         onboardingStatus: user.onboardingStatus,
         globalRoles: ["member"],
         sections: selectedSections.map((section) => ({ section, role: "member" as const })),

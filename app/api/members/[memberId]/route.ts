@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../src/db";
+import { isGlobalOperator, requireCurrentUser } from "../../../../src/server/permissions";
 import type { Member, SectionKey } from "../../../../src/types";
 
 const sectionKeys: SectionKey[] = ["finance", "forecasting", "nowcasting", "youtube", "graphics", "facebook", "development", "verification"];
@@ -30,7 +31,14 @@ function toMember(user: {
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ memberId: string }> }) {
+  const access = await requireCurrentUser();
+  if ("response" in access) return access.response;
+
   const { memberId } = await context.params;
+  if (!isGlobalOperator(access.access) && memberId !== access.access.userId) {
+    return NextResponse.json({ error: "Account access required" }, { status: 403 });
+  }
+
   const body = (await request.json().catch(() => null)) as {
     name?: string;
     handle?: string;

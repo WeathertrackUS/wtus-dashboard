@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../src/db";
+import { requireGlobalOperator } from "../../../src/server/permissions";
 import type { LiveEvent } from "../../../src/types";
 
 function parseDate(value?: string) {
@@ -9,6 +10,9 @@ function parseDate(value?: string) {
 }
 
 export async function POST(request: Request) {
+  const access = await requireGlobalOperator();
+  if ("response" in access) return access.response;
+
   const body = (await request.json().catch(() => null)) as {
     name?: string;
     description?: string;
@@ -31,6 +35,7 @@ export async function POST(request: Request) {
       status: "active",
       startsAt: parseDate(body?.startsAt),
       briefing: body?.briefing?.trim() || null,
+      createdById: access.access.userId,
       roles: {
         create: {
           name: roleName,

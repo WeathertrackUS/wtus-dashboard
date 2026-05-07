@@ -7,6 +7,8 @@ declare module "next-auth" {
       name?: string | null;
       email?: string | null;
       image?: string | null;
+      discordUserId?: string;
+      discordHandle?: string;
       discordServerVerified: boolean;
       globalRoles: GlobalRoleKey[];
     };

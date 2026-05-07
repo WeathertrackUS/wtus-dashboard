@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../src/db";
+import { canWorkInSection, requireCurrentUser } from "../../../src/server/permissions";
 import type { Priority, SectionKey, Task } from "../../../src/types";
 
 const priorities: Priority[] = ["low", "normal", "high", "urgent"];
@@ -36,6 +37,9 @@ function toTask(task: {
 }
 
 export async function POST(request: Request) {
+  const access = await requireCurrentUser();
+  if ("response" in access) return access.response;
+
   const body = (await request.json().catch(() => null)) as {
     title?: string;
     section?: string;
@@ -53,6 +57,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Task title is required" }, { status: 400 });
   }
 
+  if (!canWorkInSection(access.access, sectionKey)) {
+    return NextResponse.json({ error: "Section access required" }, { status: 403 });
+  }
+
   const section = await prisma.section.findUnique({ where: { key: sectionKey } });
   const task = await prisma.task.create({
     data: {
@@ -60,6 +68,7 @@ export async function POST(request: Request) {
       description: body?.notes?.trim() || null,
       sectionId: section?.id,
       assigneeId: body?.assigneeId || null,
+      createdById: access.access.userId,
       priority,
       dueAt: parseDate(body?.due),
     },

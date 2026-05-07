@@ -28,6 +28,39 @@ async function isDiscordGuildMember(accessToken?: string) {
   return guilds.some((guild) => guild.id === discordGuildId);
 }
 
+async function ensureVerifiedMemberAccess(userId: string, guildVerified: boolean) {
+  if (!guildVerified) return;
+
+  await prisma.$transaction(async (tx) => {
+    const memberRole = await tx.globalRole.upsert({
+      where: { key: "member" },
+      update: { name: "Member" },
+      create: { key: "member", name: "Member" },
+    });
+    const ownerRole = await tx.globalRole.upsert({
+      where: { key: "owner" },
+      update: { name: "Owner" },
+      create: { key: "owner", name: "Owner" },
+    });
+
+    await tx.userGlobalRole.upsert({
+      where: { userId_roleId: { userId, roleId: memberRole.id } },
+      update: {},
+      create: { userId, roleId: memberRole.id },
+    });
+
+    const ownerCount = await tx.userGlobalRole.count({
+      where: { role: { key: "owner" } },
+    });
+
+    if (ownerCount === 0) {
+      await tx.userGlobalRole.create({
+        data: { userId, roleId: ownerRole.id },
+      });
+    }
+  });
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
@@ -67,6 +100,8 @@ export const authOptions: NextAuthOptions = {
         },
       });
 
+      await ensureVerifiedMemberAccess(user.id, guildVerified);
+
       return true;
     },
     async session({ session, user }) {
@@ -75,6 +110,8 @@ export const authOptions: NextAuthOptions = {
         const member = await prisma.user.findUnique({
           where: { id: user.id },
           select: {
+            discordUserId: true,
+            discordHandle: true,
             discordServerVerified: true,
             globalRoles: {
               select: {
@@ -85,6 +122,8 @@ export const authOptions: NextAuthOptions = {
             },
           },
         });
+        session.user.discordUserId = member?.discordUserId ?? undefined;
+        session.user.discordHandle = member?.discordHandle ?? undefined;
         session.user.discordServerVerified = member?.discordServerVerified ?? false;
         session.user.globalRoles = member?.globalRoles.map((assignment) => assignment.role.key) ?? [];
       }

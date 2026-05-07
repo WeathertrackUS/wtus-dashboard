@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../../src/db";
+import { requireGlobalOperator } from "../../../../../src/server/permissions";
 import type { OnboardingInvite } from "../../../../../src/types";
 
 const allowedStatuses = ["open", "disabled"] as const;
@@ -24,6 +25,9 @@ function toInvite(invite: {
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ inviteId: string }> }) {
+  const access = await requireGlobalOperator();
+  if ("response" in access) return access.response;
+
   const { inviteId } = await context.params;
   const body = (await request.json().catch(() => null)) as { status?: string } | null;
   const status = allowedStatuses.find((item) => item === body?.status);

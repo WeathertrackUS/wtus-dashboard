@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../src/db";
+import { isGlobalOperator, requireCurrentUser } from "../../../src/server/permissions";
 import type { AvailabilityStatus, AvailabilityWindow, SectionKey } from "../../../src/types";
 
 const statuses: AvailabilityStatus[] = ["available", "maybe", "unavailable"];
@@ -36,6 +37,9 @@ function toAvailability(window: {
 }
 
 export async function POST(request: Request) {
+  const access = await requireCurrentUser();
+  if ("response" in access) return access.response;
+
   const body = (await request.json().catch(() => null)) as {
     memberId?: string;
     status?: string;
@@ -56,6 +60,10 @@ export async function POST(request: Request) {
 
   if (!memberId || !helpRole) {
     return NextResponse.json({ error: "Member and help role are required" }, { status: 400 });
+  }
+
+  if (!isGlobalOperator(access.access) && memberId !== access.access.userId) {
+    return NextResponse.json({ error: "You can only update your own availability" }, { status: 403 });
   }
 
   const section = sectionKey ? await prisma.section.findUnique({ where: { key: sectionKey } }) : null;

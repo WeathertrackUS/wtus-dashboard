@@ -994,9 +994,15 @@ function OnboardingPage({
   setMembers: React.Dispatch<React.SetStateAction<Member[]>>;
   setInvites: React.Dispatch<React.SetStateAction<OnboardingInvite[]>>;
 }) {
+  const { data: session, status } = useSession();
+  const isSignedIn = status === "authenticated";
+  const discordVerified = session?.user?.discordServerVerified ?? false;
+  const signedInName = session?.user?.name ?? "";
+  const signedInHandle = session?.user?.discordHandle ?? session?.user?.name ?? "";
+
   async function submitOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!invite || invite.status !== "open") return;
+    if (!invite || invite.status !== "open" || !isSignedIn || !discordVerified) return;
     const form = new FormData(event.currentTarget);
     const selectedSections = form.getAll("sections") as SectionKey[];
     const handle = String(form.get("handle")).replace(/^@/, "");
@@ -1004,7 +1010,7 @@ function OnboardingPage({
       id: `m${Date.now()}`,
       name: String(form.get("name")),
       handle,
-      discordUserId: String(form.get("discordUserId")),
+      discordUserId: session?.user?.discordUserId,
       onboardingStatus: "pending",
       globalRoles: ["member"],
       sections: selectedSections.map((section) => ({ section, role: "member" })),
@@ -1019,7 +1025,6 @@ function OnboardingPage({
           token: invite.token,
           name: fallbackMember.name,
           handle,
-          discordUserId: fallbackMember.discordUserId,
           sections: selectedSections,
         }),
       });
@@ -1052,28 +1057,32 @@ function OnboardingPage({
         </div>
         {invite?.status === "open" ? (
           <form className="stack-form" onSubmit={submitOnboarding}>
+            {!isSignedIn ? (
+              <button className="primary-button" type="button" onClick={() => signIn("discord")}>
+                Connect Discord
+              </button>
+            ) : null}
+            {isSignedIn && !discordVerified ? (
+              <EmptyState title="Server check needed" body="This Discord account is not verified in the WTUS server." />
+            ) : null}
             <label>
               Name
-              <input name="name" required placeholder="Name" />
+              <input name="name" required placeholder="Name" defaultValue={signedInName} disabled={!isSignedIn || !discordVerified} />
             </label>
             <label>
               Discord handle
-              <input name="handle" required placeholder="handle" />
-            </label>
-            <label>
-              Discord user ID
-              <input name="discordUserId" required placeholder="User ID" />
+              <input name="handle" required placeholder="handle" defaultValue={signedInHandle} disabled={!isSignedIn || !discordVerified} />
             </label>
             <fieldset className="section-picker">
               <legend>Teams</legend>
               {sections.map((section) => (
                 <label key={section.key}>
-                  <input name="sections" type="checkbox" value={section.key} />
+                  <input name="sections" type="checkbox" value={section.key} disabled={!isSignedIn || !discordVerified} />
                   <span>{section.name}</span>
                 </label>
               ))}
             </fieldset>
-            <button className="primary-button" type="submit">
+            <button className="primary-button" type="submit" disabled={!isSignedIn || !discordVerified}>
               Submit
             </button>
           </form>

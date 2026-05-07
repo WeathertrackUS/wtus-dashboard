@@ -30,10 +30,13 @@ Tasks:
 - Basic permission helpers
 - Deployment notes for VPS setup
 - Discord identity mapping plan
+- First verified Discord user bootstrap as owner
+- Server-side permission checks for dashboard and mutating APIs
 
 Done when:
 
-- Owner and operations lead can sign in
+- The first owner can sign in through Discord OAuth
+- Owner and operations lead can operate with the same broad dashboard permissions
 - Users can have multiple section roles
 - The app can show member and section directories
 - The app has a clear path for linking Discord users to dashboard users
