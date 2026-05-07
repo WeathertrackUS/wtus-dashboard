@@ -829,6 +829,15 @@ label {
   letter-spacing: 0;
 }
 
+.auth-gate {
+  max-width: 520px;
+}
+
+.auth-gate .primary-button,
+.auth-gate .auth-button {
+  width: 100%;
+}
+
 .availability-card {
   display: grid;
   grid-template-columns: 1fr auto;

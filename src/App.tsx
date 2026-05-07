@@ -41,6 +41,7 @@ import type {
 } from "./types";
 
 const wtusLogoSrc = typeof wtusLogo === "string" ? wtusLogo : wtusLogo.src;
+const isProductionRuntime = process.env.NODE_ENV === "production";
 
 type DashboardData = {
   members: Member[];
@@ -67,7 +68,7 @@ function useStoredState<T>(key: string, initialValue: T) {
   const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (isProductionRuntime || typeof window === "undefined") return;
     const stored = window.localStorage.getItem(key);
     if (!stored) {
       setHasLoaded(true);
@@ -83,7 +84,7 @@ function useStoredState<T>(key: string, initialValue: T) {
   }, [key]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !hasLoaded) return;
+    if (isProductionRuntime || typeof window === "undefined" || !hasLoaded) return;
     window.localStorage.setItem(key, JSON.stringify(value));
   }, [hasLoaded, key, value]);
 
@@ -259,6 +260,46 @@ function AppShell({
         {children}
       </main>
     </div>
+  );
+}
+
+function ProductionAuthGate({ state }: { state: "loading" | "signin" | "unverified" }) {
+  const isLoading = state === "loading";
+  const isUnverified = state === "unverified";
+
+  return (
+    <main className="onboarding-page">
+      <section className="onboarding-shell auth-gate">
+        <div className="onboarding-brand">
+          <img className="brand-logo" src={wtusLogoSrc} alt="WTUS" />
+          <div>
+            <strong>WTUS</strong>
+            <span>Operations hub</span>
+          </div>
+        </div>
+        <div className="onboarding-copy">
+          <h1>Operations</h1>
+          <p>
+            {isLoading
+              ? "Checking your session."
+              : isUnverified
+                ? "This Discord account is not verified in the WTUS server."
+                : "Sign in with Discord to continue."}
+          </p>
+        </div>
+        {isUnverified ? (
+          <button className="auth-button" type="button" onClick={() => signOut()}>
+            <LogOut size={16} />
+            <span>Sign out</span>
+          </button>
+        ) : (
+          <button className="primary-button" type="button" disabled={isLoading} onClick={() => signIn("discord")}>
+            <LogIn size={16} />
+            {isLoading ? "Checking" : "Sign in with Discord"}
+          </button>
+        )}
+      </section>
+    </main>
   );
 }
 
@@ -1824,7 +1865,7 @@ export function App() {
   const [active, setActive] = useStoredState<NavItem>("wtus.activeView", "dashboard");
   const [role, setRole] = useStoredState<RoleView>("wtus.roleView", "operations");
   const { data: session, status } = useSession();
-  const isDevelopmentFallback = status !== "authenticated";
+  const isDevelopmentFallback = !isProductionRuntime && status !== "authenticated";
   const effectiveRole = isDevelopmentFallback ? role : roleFromSession(session?.user?.globalRoles);
   const [members, setMembers] = useStoredState<Member[]>("wtus.members", initialMembers);
   const [invites, setInvites] = useStoredState<OnboardingInvite[]>("wtus.onboardingInvites", []);
@@ -1840,6 +1881,8 @@ export function App() {
     let activeRequest = true;
 
     async function loadDashboardData() {
+      if (isDevelopmentFallback || status !== "authenticated") return;
+
       try {
         const response = await fetch("/api/dashboard");
         if (!response.ok) return;
@@ -1859,7 +1902,7 @@ export function App() {
     return () => {
       activeRequest = false;
     };
-  }, [setAvailability, setCoverage, setEvents, setInvites, setMembers, setTasks]);
+  }, [isDevelopmentFallback, setAvailability, setCoverage, setEvents, setInvites, setMembers, setTasks, status]);
 
   useEffect(() => {
     const updateHash = () => setHash(window.location.hash);
@@ -1976,6 +2019,14 @@ export function App() {
 
   if (onboardingToken) {
     return <OnboardingPage invite={onboardingInvite} members={members} setMembers={setMembers} setInvites={setInvites} />;
+  }
+
+  if (isProductionRuntime && status !== "authenticated") {
+    return <ProductionAuthGate state={status === "loading" ? "loading" : "signin"} />;
+  }
+
+  if (isProductionRuntime && !session?.user?.discordServerVerified) {
+    return <ProductionAuthGate state="unverified" />;
   }
 
   return (

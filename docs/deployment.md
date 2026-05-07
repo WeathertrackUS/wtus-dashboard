@@ -40,11 +40,14 @@ Before real team use:
 
 - Use HTTPS
 - Store secrets in environment variables
+- Set `APP_URL` and `NEXTAUTH_URL` to the public HTTPS dashboard URL
 - Use secure password/session settings
 - Restrict admin features by role
 - Seed only the required global roles and WTUS sections
 - Back up the database at least daily
 - Keep deployment instructions in the repo
+
+In production, the main dashboard is behind Discord OAuth. Local role preview and browser localStorage fallback are development-only. Onboarding links stay reachable so a new member can connect Discord before their dashboard account exists.
 
 ## Minimum Environment Variables
 
@@ -71,11 +74,17 @@ Initial simple flow:
 1. Push changes to the repository.
 2. Pull latest changes on the VPS.
 3. Install dependencies.
-4. Run database migrations.
+4. Run production database migrations.
 5. Build the app.
 6. Restart the app service.
 7. Restart the Discord bot service if bot code changed.
 8. Confirm the health page, login, and bot status work.
+
+The production migration command is:
+
+```bash
+pnpm db:deploy
+```
 
 ## Discord Bot Process
 

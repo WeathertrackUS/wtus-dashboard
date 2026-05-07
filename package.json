@@ -7,6 +7,7 @@
     "dev": "prisma generate && next dev --hostname 127.0.0.1",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "build": "prisma generate && next build",
     "bot:register": "tsx bot/index.ts --register-only",
