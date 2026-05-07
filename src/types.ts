@@ -45,6 +45,16 @@ export interface Task {
   ownerId: string;
   due: string;
   notes: string;
+  comments?: TaskComment[];
+}
+
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  userId?: string;
+  authorName?: string;
+  body: string;
+  createdAt: string;
 }
 
 export interface AvailabilityWindow {

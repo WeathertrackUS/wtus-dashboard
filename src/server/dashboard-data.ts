@@ -12,7 +12,13 @@ export async function getDashboardData() {
     }),
     prisma.task.findMany({
       orderBy: { createdAt: "desc" },
-      include: { section: true },
+      include: {
+        section: true,
+        comments: {
+          orderBy: { createdAt: "desc" },
+          include: { user: true },
+        },
+      },
     }),
     prisma.availabilityWindow.findMany({
       orderBy: { startsAt: "asc" },
@@ -57,6 +63,14 @@ export async function getDashboardData() {
       ownerId: task.createdById ?? task.assigneeId ?? "",
       due: task.dueAt ? task.dueAt.toLocaleDateString() : "",
       notes: task.description ?? "",
+      comments: task.comments.map((comment) => ({
+        id: comment.id,
+        taskId: comment.taskId,
+        userId: comment.userId ?? undefined,
+        authorName: comment.user?.name ?? comment.user?.discordHandle ?? undefined,
+        body: comment.body,
+        createdAt: comment.createdAt.toLocaleString(),
+      })),
     })),
     availability: availability.map<AvailabilityWindow>((window) => ({
       id: window.id,

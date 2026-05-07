@@ -15,6 +15,7 @@ function toTask(task: {
   createdById: string | null;
   dueAt: Date | null;
   section: { key: Task["section"] } | null;
+  comments?: [];
 }): Task {
   return {
     id: task.id,
@@ -26,6 +27,7 @@ function toTask(task: {
     ownerId: task.createdById ?? task.assigneeId ?? "",
     due: task.dueAt ? task.dueAt.toLocaleDateString() : "",
     notes: task.description ?? "",
+    comments: task.comments ?? [],
   };
 }
 

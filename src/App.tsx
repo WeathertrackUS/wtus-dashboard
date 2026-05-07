@@ -35,6 +35,7 @@ import type {
   RoleView,
   SectionKey,
   Task,
+  TaskComment,
   TaskStatus,
   TemporaryCoverage,
 } from "./types";
@@ -275,11 +276,15 @@ function TaskTable({
   members,
   compact,
   onStatusChange,
+  onSelect,
+  selectedTaskId,
 }: {
   tasks: Task[];
   members: Member[];
   compact?: boolean;
   onStatusChange: (taskId: string, status: TaskStatus) => void;
+  onSelect?: (taskId: string) => void;
+  selectedTaskId?: string;
 }) {
   return (
     <div className="table-wrap">
@@ -296,10 +301,13 @@ function TaskTable({
         </thead>
         <tbody>
           {tasks.map((task) => (
-            <tr key={task.id}>
+            <tr className={selectedTaskId === task.id ? "selected-row" : ""} key={task.id}>
               <td>
-                <strong>{task.title}</strong>
+                <button className="task-title-button" type="button" onClick={() => onSelect?.(task.id)}>
+                  {task.title}
+                </button>
                 {!compact && <span>{task.notes}</span>}
+                {!compact && task.comments?.length ? <small>{task.comments.length} updates</small> : null}
               </td>
               <td>{sectionName(task.section)}</td>
               <td>{memberHandle(members, task.ownerId)}</td>
@@ -505,6 +513,14 @@ function TasksView({
 }) {
   const [sectionFilter, setSectionFilter] = useState<SectionKey | "all">("all");
   const visibleTasks = sectionFilter === "all" ? tasks : tasks.filter((task) => task.section === sectionFilter);
+  const [selectedTaskId, setSelectedTaskId] = useState("");
+  const selectedTask = visibleTasks.find((task) => task.id === selectedTaskId) ?? visibleTasks[0];
+
+  useEffect(() => {
+    if (selectedTask && selectedTask.id !== selectedTaskId) {
+      setSelectedTaskId(selectedTask.id);
+    }
+  }, [selectedTask, selectedTaskId]);
 
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -541,6 +557,39 @@ function TasksView({
       }
     } catch {}
     setTasks((current) => [task, ...current]);
+    setSelectedTaskId(task.id);
+    event.currentTarget.reset();
+  }
+
+  async function addTaskComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedTask) return;
+    const form = new FormData(event.currentTarget);
+    const body = String(form.get("body") || "").trim();
+    if (!body) return;
+    const fallbackComment: TaskComment = {
+      id: `c${Date.now()}`,
+      taskId: selectedTask.id,
+      body,
+      createdAt: new Date().toLocaleString(),
+    };
+    let comment = fallbackComment;
+    try {
+      const response = await fetch(`/api/tasks/${selectedTask.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { comment: TaskComment };
+        comment = data.comment;
+      }
+    } catch {}
+    setTasks((current) =>
+      current.map((task) =>
+        task.id === selectedTask.id ? { ...task, comments: [comment, ...(task.comments ?? [])] } : task,
+      ),
+    );
     event.currentTarget.reset();
   }
 
@@ -562,10 +611,38 @@ function TasksView({
           </label>
         </div>
         {visibleTasks.length ? (
-          <TaskTable tasks={visibleTasks} members={members} onStatusChange={onTaskStatus} />
+          <TaskTable tasks={visibleTasks} members={members} onStatusChange={onTaskStatus} onSelect={setSelectedTaskId} selectedTaskId={selectedTask?.id} />
         ) : (
           <EmptyState title="No tasks match this view" body="Nothing here yet." />
         )}
+        {selectedTask ? (
+          <div className="task-updates">
+            <PanelHeader icon={<ListChecks size={19} />} title="Task updates" />
+            <strong>{selectedTask.title}</strong>
+            <div className="comment-list">
+              {selectedTask.comments?.length ? (
+                selectedTask.comments.map((comment) => (
+                  <div className="comment-card" key={comment.id}>
+                    <span>{comment.authorName ?? "Team"}</span>
+                    <p>{comment.body}</p>
+                    <small>{comment.createdAt}</small>
+                  </div>
+                ))
+              ) : (
+                <EmptyState title="No updates yet" body="Add context when it matters." />
+              )}
+            </div>
+            <form className="inline-form" onSubmit={addTaskComment}>
+              <label>
+                Update
+                <input name="body" placeholder="Add a quick task update" />
+              </label>
+              <button className="primary-button" type="submit">
+                Add update
+              </button>
+            </form>
+          </div>
+        ) : null}
       </section>
 
       <section className="panel">

@@ -409,6 +409,67 @@ select:disabled {
   line-height: 1.35;
 }
 
+.task-table td small {
+  display: block;
+  margin-top: 4px;
+  color: #8792a4;
+  font-size: 11px;
+}
+
+.task-table tr.selected-row td {
+  background: rgba(176, 26, 26, 0.06);
+}
+
+.task-title-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  font-weight: 800;
+  padding: 0;
+  text-align: left;
+}
+
+.task-title-button:hover {
+  color: #b01a1a;
+}
+
+.task-updates {
+  border-top: 1px solid #eef2f6;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.comment-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.comment-card {
+  border: 1px solid #e8edf4;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.comment-card span {
+  color: #6a7485;
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.comment-card p {
+  margin: 4px 0;
+}
+
+.comment-card small {
+  color: #8792a4;
+  font-size: 11px;
+}
+
 select,
 input,
 textarea {
@@ -686,6 +747,7 @@ label {
 .assignment-card,
 .member-card,
 .coverage-card,
+.comment-card,
 .invite-card,
 .onboarding-status > div,
 .command-row,
@@ -1164,6 +1226,7 @@ label {
 .admin-grid strong,
 .alert-list strong,
 .coverage-card strong,
+.comment-card p,
 .invite-card strong,
 .member-card strong,
 .availability-row strong,
@@ -1228,6 +1291,9 @@ textarea::placeholder {
 }
 
 .task-table td span,
+.task-table td small,
+.comment-card span,
+.comment-card small,
 .availability-card em,
 .availability-card small,
 .coverage-card small,
