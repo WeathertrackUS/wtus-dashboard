@@ -918,13 +918,13 @@ function OnboardingPage({
   setMembers: React.Dispatch<React.SetStateAction<Member[]>>;
   setInvites: React.Dispatch<React.SetStateAction<OnboardingInvite[]>>;
 }) {
-  function submitOnboarding(event: FormEvent<HTMLFormElement>) {
+  async function submitOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!invite || invite.status !== "open") return;
     const form = new FormData(event.currentTarget);
     const selectedSections = form.getAll("sections") as SectionKey[];
     const handle = String(form.get("handle")).replace(/^@/, "");
-    const member: Member = {
+    const fallbackMember: Member = {
       id: `m${Date.now()}`,
       name: String(form.get("name")),
       handle,
@@ -933,9 +933,29 @@ function OnboardingPage({
       globalRoles: ["member"],
       sections: selectedSections.map((section) => ({ section, role: "member" })),
     };
+    let member = fallbackMember;
+    let updatedInvite: OnboardingInvite = { ...invite, status: "used", memberId: fallbackMember.id };
+    try {
+      const response = await fetch("/api/onboarding/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: invite.token,
+          name: fallbackMember.name,
+          handle,
+          discordUserId: fallbackMember.discordUserId,
+          sections: selectedSections,
+        }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { member: Member; invite: OnboardingInvite };
+        member = data.member;
+        updatedInvite = data.invite;
+      }
+    } catch {}
     setMembers((current) => [member, ...current]);
     setInvites((current) =>
-      current.map((item) => (item.id === invite.id ? { ...item, status: "used", memberId: member.id } : item)),
+      current.map((item) => (item.id === invite.id ? updatedInvite : item)),
     );
     event.currentTarget.reset();
   }
@@ -1280,10 +1300,10 @@ function AdminView({
     setOrigin(window.location.origin + window.location.pathname);
   }, []);
 
-  function createInvite(event: FormEvent<HTMLFormElement>) {
+  async function createInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const invite: OnboardingInvite = {
+    const fallbackInvite: OnboardingInvite = {
       id: `oi${Date.now()}`,
       token: globalThis.crypto?.randomUUID?.() ?? `invite-${Date.now()}`,
       label: String(form.get("label") || "New member"),
@@ -1291,12 +1311,39 @@ function AdminView({
       createdAt: new Date().toLocaleString(),
       status: "open",
     };
+    let invite = fallbackInvite;
+    try {
+      const response = await fetch("/api/onboarding/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: fallbackInvite.label }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { invite: OnboardingInvite };
+        invite = data.invite;
+      }
+    } catch {}
     setInvites((current) => [invite, ...current]);
     event.currentTarget.reset();
   }
 
-  function setInviteStatus(inviteId: string, status: OnboardingInvite["status"]) {
+  async function setInviteStatus(inviteId: string, status: OnboardingInvite["status"]) {
+    let updatedInvite: OnboardingInvite | undefined;
+    try {
+      const response = await fetch(`/api/onboarding/invites/${inviteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { invite: OnboardingInvite };
+        updatedInvite = data.invite;
+      }
+    } catch {}
     setInvites((current) => current.map((invite) => (invite.id === inviteId ? { ...invite, status } : invite)));
+    if (updatedInvite) {
+      setInvites((current) => current.map((invite) => (invite.id === inviteId ? updatedInvite : invite)));
+    }
   }
 
   function addCoverage(event: FormEvent<HTMLFormElement>) {
