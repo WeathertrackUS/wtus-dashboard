@@ -13,7 +13,7 @@ export type SectionKey =
 export type TaskStatus = "todo" | "in_progress" | "blocked" | "review" | "done";
 export type Priority = "low" | "normal" | "high" | "urgent";
 export type AvailabilityStatus = "available" | "maybe" | "unavailable";
-export type EventStatus = "planned" | "active" | "paused" | "ended";
+export type EventStatus = "planned" | "active" | "paused" | "ended" | "cancelled";
 
 export interface Member {
   id: string;
@@ -99,5 +99,5 @@ export interface TemporaryCoverage {
   reason: string;
   startsAt: string;
   endsAt: string;
-  status: "scheduled" | "active" | "ended";
+  status: "scheduled" | "active" | "ended" | "cancelled";
 }

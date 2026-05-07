@@ -41,6 +41,15 @@ import type {
 
 const wtusLogoSrc = typeof wtusLogo === "string" ? wtusLogo : wtusLogo.src;
 
+type DashboardData = {
+  members: Member[];
+  invites: OnboardingInvite[];
+  tasks: Task[];
+  availability: AvailabilityWindow[];
+  liveEvents: LiveEvent[];
+  coverage: TemporaryCoverage[];
+};
+
 type NavItem =
   | "dashboard"
   | "tasks"
@@ -1486,6 +1495,31 @@ export function App() {
   const [hash, setHash] = useState("");
   const onboardingToken = hash.match(/^#\/onboard\/([^/]+)$/)?.[1];
   const onboardingInvite = invites.find((invite) => invite.token === onboardingToken);
+
+  useEffect(() => {
+    let activeRequest = true;
+
+    async function loadDashboardData() {
+      try {
+        const response = await fetch("/api/dashboard");
+        if (!response.ok) return;
+        const data = (await response.json()) as DashboardData;
+        if (!activeRequest) return;
+        setMembers(data.members);
+        setInvites(data.invites);
+        setTasks(data.tasks);
+        setAvailability(data.availability);
+        setEvents(data.liveEvents);
+        setCoverage(data.coverage);
+      } catch {
+      }
+    }
+
+    loadDashboardData();
+    return () => {
+      activeRequest = false;
+    };
+  }, [setAvailability, setCoverage, setEvents, setInvites, setMembers, setTasks]);
 
   useEffect(() => {
     const updateHash = () => setHash(window.location.hash);
