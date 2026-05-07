@@ -21,13 +21,12 @@ What not to carry forward immediately:
 
 Useful ideas:
 
-- Weather-aware dashboard UI direction
+- WTUS-branded operations UI direction
 - SPC/NHC outlook widgets as possible future operational context
 
 What not to carry forward immediately:
 
 - Single-file dashboard approach
-- Weather imagery as the core app surface
 - Mock storm data
 
 ### `../wtus-operations-dashboard`
@@ -65,7 +64,7 @@ Defer:
 - Calendar sync
 - Advanced availability
 - File sharing
-- Weather data widgets
+- Weather data widgets for later, not the core operations surface
 - Analytics
 
 Prioritize soon:

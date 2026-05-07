@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Bell,
   Bot,
@@ -34,6 +36,8 @@ import type {
   TemporaryCoverage,
 } from "./types";
 
+const wtusLogoSrc = typeof wtusLogo === "string" ? wtusLogo : wtusLogo.src;
+
 type NavItem =
   | "dashboard"
   | "tasks"
@@ -46,20 +50,29 @@ type NavItem =
   | "admin";
 
 function useStoredState<T>(key: string, initialValue: T) {
-  const [value, setValue] = useState<T>(() => {
-    const stored = window.localStorage.getItem(key);
-    if (!stored) return initialValue;
-
-    try {
-      return JSON.parse(stored) as T;
-    } catch {
-      return initialValue;
-    }
-  });
+  const [value, setValue] = useState<T>(initialValue);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(key);
+    if (!stored) {
+      setHasLoaded(true);
+      return;
+    }
+
+    try {
+      setValue(JSON.parse(stored) as T);
+    } catch {
+      setValue(initialValue);
+    }
+    setHasLoaded(true);
+  }, [key]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasLoaded) return;
     window.localStorage.setItem(key, JSON.stringify(value));
-  }, [key, value]);
+  }, [hasLoaded, key, value]);
 
   return [value, setValue] as const;
 }
@@ -168,10 +181,10 @@ function AppShell({
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <img className="brand-logo" src={wtusLogo} alt="WTUS" />
+          <img className="brand-logo" src={wtusLogoSrc} alt="WTUS" />
           <div>
             <strong>WTUS</strong>
-            <span>Weather team hub</span>
+            <span>Operations hub</span>
           </div>
         </div>
         <nav className="nav-list" aria-label="Primary navigation">
@@ -193,7 +206,7 @@ function AppShell({
       <main className="main">
         <header className="topbar">
           <div>
-            <h1>WTUS Weather Hub</h1>
+            <h1>Operations</h1>
           </div>
           <div className="topbar-actions">
             <label className="search-box">
@@ -913,7 +926,7 @@ function OnboardingPage({
     <main className="onboarding-page">
       <section className="onboarding-shell">
         <div className="onboarding-brand">
-          <img className="brand-logo" src={wtusLogo} alt="WTUS" />
+          <img className="brand-logo" src={wtusLogoSrc} alt="WTUS" />
           <div>
             <strong>WTUS</strong>
             <span>Dashboard onboarding</span>
@@ -1243,14 +1256,18 @@ function AdminView({
   setCoverage: React.Dispatch<React.SetStateAction<TemporaryCoverage[]>>;
   setInvites: React.Dispatch<React.SetStateAction<OnboardingInvite[]>>;
 }) {
-  const origin = window.location.origin + window.location.pathname;
+  const [origin, setOrigin] = useState("");
+
+  useEffect(() => {
+    setOrigin(window.location.origin + window.location.pathname);
+  }, []);
 
   function createInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const invite: OnboardingInvite = {
       id: `oi${Date.now()}`,
-      token: crypto.randomUUID(),
+      token: globalThis.crypto?.randomUUID?.() ?? `invite-${Date.now()}`,
       label: String(form.get("label") || "New member"),
       createdByRole: role === "owner" ? "owner" : "operations",
       createdAt: new Date().toLocaleString(),
@@ -1457,12 +1474,13 @@ export function App() {
   const [availability, setAvailability] = useStoredState<AvailabilityWindow[]>("wtus.availability", initialAvailability);
   const [events, setEvents] = useStoredState<LiveEvent[]>("wtus.liveEvents", initialEvents);
   const [coverage, setCoverage] = useStoredState<TemporaryCoverage[]>("wtus.temporaryCoverage", initialCoverage);
-  const [hash, setHash] = useState(window.location.hash);
+  const [hash, setHash] = useState("");
   const onboardingToken = hash.match(/^#\/onboard\/([^/]+)$/)?.[1];
   const onboardingInvite = invites.find((invite) => invite.token === onboardingToken);
 
   useEffect(() => {
     const updateHash = () => setHash(window.location.hash);
+    updateHash();
     window.addEventListener("hashchange", updateHash);
     return () => window.removeEventListener("hashchange", updateHash);
   }, []);

@@ -157,7 +157,7 @@ select:disabled {
 
 .topbar h1 {
   margin: 0;
-  font-size: 29px;
+  font-size: 22px;
   line-height: 1.15;
   letter-spacing: 0;
 }
@@ -854,17 +854,38 @@ label {
 }
 
 @media (max-width: 720px) {
+  body {
+    min-width: 0;
+  }
+
   .main {
-    padding: 14px;
+    padding: 10px;
   }
 
   .topbar {
     display: grid;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .topbar h1 {
+    font-size: 18px;
+  }
+
+  .topbar-actions {
+    display: grid;
+    gap: 8px;
+    justify-content: stretch;
   }
 
   .search-box,
   .topbar-actions {
     width: 100%;
+  }
+
+  .search-box {
+    min-width: 0;
+    padding: 8px 10px;
   }
 
   .role-switcher {
@@ -873,6 +894,9 @@ label {
 
   .role-switcher button {
     flex: 1;
+    min-width: 0;
+    padding: 8px 6px;
+    font-size: 12px;
   }
 
   .nav-list,
@@ -891,7 +915,108 @@ label {
   }
 
   .sidebar {
+    padding: 10px;
+    gap: 12px;
+  }
+
+  .brand {
+    padding: 0;
+  }
+
+  .brand-logo {
+    width: 58px;
+    max-width: 28%;
+  }
+
+  .brand span {
+    font-size: 12px;
+  }
+
+  .nav-list {
+    display: flex;
+    gap: 6px;
+    margin-inline: -10px;
+    overflow-x: auto;
+    padding: 0 10px 4px;
+    scrollbar-width: thin;
+  }
+
+  .nav-item {
+    width: auto;
+    flex: 0 0 auto;
+    min-width: 112px;
+    justify-content: center;
+    padding: 9px 10px;
+    white-space: nowrap;
+  }
+
+  .sidebar-note {
+    display: none;
+  }
+
+  .role-context {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  .metric,
+  .panel {
+    box-shadow: none;
+  }
+
+  .metric,
+  .panel,
+  .briefing-card {
+    padding: 12px;
+  }
+
+  .dashboard-grid,
+  .event-page,
+  .two-column-page,
+  .members-page {
+    gap: 10px;
+  }
+
+  .panel-header {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .panel-header h2 {
+    font-size: 15px;
+  }
+
+  .table-wrap {
+    margin-inline: -12px;
+    padding-inline: 12px;
+  }
+
+  .task-table {
+    min-width: 640px;
+  }
+
+  .task-table th,
+  .task-table td {
+    padding: 9px 7px;
+  }
+
+  select,
+  input,
+  textarea {
+    min-width: 0;
+  }
+
+  .onboarding-page {
+    align-items: start;
+    padding: 10px;
+  }
+
+  .onboarding-shell {
     padding: 14px;
+  }
+
+  .onboarding-copy h1 {
+    font-size: 22px;
   }
 }
 
@@ -1009,9 +1134,8 @@ label {
 }
 
 .topbar h1 {
-  text-transform: uppercase;
-  font-size: 31px;
-  font-weight: 900;
+  font-size: 22px;
+  font-weight: 800;
 }
 
 .search-box input,
@@ -1132,5 +1256,56 @@ code {
   .brand-logo {
     width: 76px;
     max-width: 32%;
+  }
+}
+
+@media (max-width: 720px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-shell,
+  .sidebar,
+  .main {
+    min-width: 0;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .sidebar {
+    overflow: hidden;
+  }
+
+  .brand,
+  .topbar,
+  .topbar-actions,
+  .role-context,
+  .dashboard-grid,
+  .event-page,
+  .two-column-page,
+  .members-page,
+  .overview-band,
+  .panel,
+  .metric {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .topbar h1 {
+    font-size: 18px;
+  }
+
+  .nav-list {
+    width: 100%;
+    max-width: calc(100vw - 20px);
+    margin-inline: 0;
+  }
+
+  .brand-logo {
+    width: 58px;
+    max-width: 28%;
   }
 }

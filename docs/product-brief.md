@@ -92,7 +92,7 @@ Prioritize:
 - Fast scanning
 - Clear ownership
 - Strong status labels
-- Mobile-friendly views for checking tasks during active weather coverage
+- Mobile-first views for members who depend on phones during normal operations and active weather coverage
 - Minimal clicks for common updates
 - Safe access from a web-hosted production environment
 

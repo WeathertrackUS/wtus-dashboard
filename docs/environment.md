@@ -97,4 +97,4 @@ Why this fits WTUS:
 - Easy environment variable setup
 - Not overbuilt
 
-The current Vite app is a useful prototype shell. The production version should move to a full-stack app before real auth, database persistence, and Discord verification are implemented.
+The app now uses Next.js so real auth, database persistence, and Discord verification can live in server-side routes instead of being bolted onto a static client shell.

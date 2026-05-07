@@ -1,6 +1,6 @@
-# WTUS Dashboard
+# WTUS Operations Dashboard
 
-A simple internal dashboard for WeatherTrackUS team coordination.
+A simple internal operations dashboard for WeatherTrackUS team coordination.
 
 This repository is the new consolidated home for the WTUS team app. It replaces the scattered attempts in:
 
@@ -12,7 +12,7 @@ The goal is not to merge every old feature. The goal is to keep the useful ideas
 
 ## What This App Is For
 
-WTUS needs a modern internal dashboard focused on:
+WTUS needs a modern internal operations dashboard focused on:
 
 - Task tracking for social media and weather brand operations
 - Member availability for live event help
@@ -21,7 +21,9 @@ WTUS needs a modern internal dashboard focused on:
 - Team membership, section leads, and overlapping roles
 - A future-friendly foundation for more operations tools
 
-The app should feel like a WTUS weather team tool, not a business dashboard, marketing site, or giant project management suite.
+The app should feel like a WTUS operations tool, not a business dashboard, marketing site, or giant project management suite.
+
+Mobile matters from the start. Some members will use this mainly from a phone, especially while checking tasks, availability, or live event assignments.
 
 ## Deployment Target
 
@@ -43,7 +45,7 @@ It should not rely on local-only storage or assumptions that only one trusted pe
 The first usable version should include:
 
 - A dashboard overview showing urgent tasks, available members, and recent activity
-- A task board for brand/social/weather operations work
+- A task board for brand, social, and operations work
 - A member availability board for live event help
 - A live event dashboard for active events with temporary event roles and assignments
 - A WTUS Discord bot that connects Discord workflows to dashboard tasks and availability
@@ -103,9 +105,10 @@ The live event dashboard should be fast, focused, and hard to misuse. During act
 
 ## Current App
 
-This repository currently contains a Vite + React + TypeScript dashboard prototype with:
+This repository currently contains a Next.js + React + TypeScript operations dashboard with:
 
 - Dark WTUS branding using the real transparent logo
+- Mobile-first layout behavior for the main dashboard and onboarding flow
 - Empty runtime data for members, tasks, availability, live events, and temporary coverage
 - Fixed WTUS section definitions
 - Task creation and status updates
@@ -131,14 +134,14 @@ Keep this simple:
 
 Current stack:
 
-- Vite
+- Next.js
 - React
 - TypeScript
 - Plain CSS
 
-Future production stack:
+Production stack:
 
-- Next.js as the server-side app layer when persistence/auth is added
+- Next.js app router
 - PostgreSQL for local development and production
 - Prisma or Drizzle for schema/migrations
 - Auth.js with Discord OAuth
