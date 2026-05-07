@@ -30,14 +30,26 @@ The first bot version should focus on dashboard-connected actions:
 
 Command names can change later, but the first set should be small:
 
-- `/tasks mine`
+- `/wtus`
+- `/mytasks`
+- `/available`
+- `/eventroles`
+
+The first implemented bot entrypoint lives at `bot/index.ts` and uses the same Prisma database as the dashboard. Run it with:
+
+```bash
+pnpm bot:register
+pnpm bot:start
+```
+
+`pnpm bot:register` registers guild-scoped slash commands with the Discord application. `pnpm bot:start` starts the bot process.
+
+Next commands to add:
+
 - `/tasks create`
 - `/tasks update`
-- `/available now`
-- `/available later`
 - `/available list`
 - `/event current`
-- `/event mine`
 - `/event assign`
 - `/roles temp`
 

@@ -77,6 +77,19 @@ Initial simple flow:
 7. Restart the Discord bot service if bot code changed.
 8. Confirm the health page, login, and bot status work.
 
+## Discord Bot Process
+
+The first bot entrypoint is `bot/index.ts`.
+
+Use these commands on the VPS after environment variables are set:
+
+```bash
+pnpm bot:register
+pnpm bot:start
+```
+
+Run `pnpm bot:register` after command changes. Run `pnpm bot:start` under systemd or the same process manager used for the web app.
+
 Automation can come later after the app is stable.
 
 ## Security Notes

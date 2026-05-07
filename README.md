@@ -122,6 +122,7 @@ This repository currently contains a Next.js + React + TypeScript operations das
 - Account page for members to edit their team preferences
 - Section, Discord bot, and team setup views
 - Server-side permission checks for dashboard data and mutating app APIs
+- First WTUS bot entrypoint with dashboard-linked task, availability, and live event commands
 
 Members and availability are not hard-coded. Test/demo data should stay limited to tests or future seed scripts.
 
