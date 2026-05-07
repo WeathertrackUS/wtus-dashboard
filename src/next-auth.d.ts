@@ -10,6 +10,8 @@ declare module "next-auth" {
       discordUserId?: string;
       discordHandle?: string;
       discordServerVerified: boolean;
+      onboardingStatus: "pending" | "verified";
+      status: "active" | "inactive" | "invited";
       globalRoles: GlobalRoleKey[];
     };
   }

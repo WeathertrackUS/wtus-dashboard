@@ -11,6 +11,18 @@ export type CurrentAccess = {
 };
 
 export type AccessResult = { access: CurrentAccess } | { response: NextResponse };
+type VerifiedDiscordResult =
+  | {
+      userId: string;
+      user: {
+        discordServerVerified: boolean;
+        onboardingStatus: "pending" | "verified";
+        status: "active" | "inactive" | "invited";
+        globalRoles: Array<{ role: { key: string } }>;
+        sectionMemberships: Array<{ role: "lead" | "member"; section: { key: SectionKey } }>;
+      };
+    }
+  | { response: NextResponse };
 
 export function isGlobalOperator(access: CurrentAccess) {
   return access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead");
@@ -23,6 +35,27 @@ export function canWorkInSection(access: CurrentAccess, section?: SectionKey) {
 }
 
 export async function requireCurrentUser(): Promise<AccessResult> {
+  const result = await requireDiscordVerifiedUser();
+  if ("response" in result) return result;
+
+  const { userId, user } = result;
+  if (user.onboardingStatus !== "verified" || user.status !== "active") {
+    return { response: NextResponse.json({ error: "Dashboard onboarding required" }, { status: 403 }) };
+  }
+
+  return {
+    access: {
+      userId,
+      globalRoles: user.globalRoles.map((assignment) => assignment.role.key),
+      sections: user.sectionMemberships.map((membership) => ({
+        section: membership.section.key,
+        role: membership.role,
+      })),
+    },
+  };
+}
+
+export async function requireDiscordVerifiedUser(): Promise<VerifiedDiscordResult> {
   const session = await getServerSession(authOptions);
   const userId = session?.user?.id;
 
@@ -34,6 +67,8 @@ export async function requireCurrentUser(): Promise<AccessResult> {
     where: { id: userId },
     select: {
       discordServerVerified: true,
+      onboardingStatus: true,
+      status: true,
       globalRoles: { select: { role: { select: { key: true } } } },
       sectionMemberships: {
         select: {
@@ -48,16 +83,7 @@ export async function requireCurrentUser(): Promise<AccessResult> {
     return { response: NextResponse.json({ error: "Discord server verification required" }, { status: 403 }) };
   }
 
-  return {
-    access: {
-      userId,
-      globalRoles: user.globalRoles.map((assignment) => assignment.role.key),
-      sections: user.sectionMemberships.map((membership) => ({
-        section: membership.section.key,
-        role: membership.role,
-      })),
-    },
-  };
+  return { userId, user };
 }
 
 export async function requireGlobalOperator(): Promise<AccessResult> {

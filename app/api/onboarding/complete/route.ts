@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../src/db";
-import { requireCurrentUser } from "../../../../src/server/permissions";
+import { requireDiscordVerifiedUser } from "../../../../src/server/permissions";
 import type { Member, SectionKey } from "../../../../src/types";
 
 const sectionKeys: SectionKey[] = ["finance", "forecasting", "nowcasting", "youtube", "graphics", "facebook", "development", "verification"];
@@ -11,7 +11,7 @@ function cleanSections(value: unknown): SectionKey[] {
 }
 
 export async function POST(request: Request) {
-  const access = await requireCurrentUser();
+  const access = await requireDiscordVerifiedUser();
   if ("response" in access) return access.response;
 
   const body = (await request.json().catch(() => null)) as {
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     const memberRole = await tx.globalRole.findUnique({ where: { key: "member" } });
     const sections = await tx.section.findMany({ where: { key: { in: selectedSections } } });
     const user = await tx.user.update({
-      where: { id: access.access.userId },
+      where: { id: access.userId },
       data: {
         name,
         handle,

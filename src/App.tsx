@@ -263,9 +263,10 @@ function AppShell({
   );
 }
 
-function ProductionAuthGate({ state }: { state: "loading" | "signin" | "unverified" }) {
+function ProductionAuthGate({ state }: { state: "loading" | "signin" | "unverified" | "onboarding" }) {
   const isLoading = state === "loading";
   const isUnverified = state === "unverified";
+  const needsOnboarding = state === "onboarding";
 
   return (
     <main className="onboarding-page">
@@ -284,10 +285,12 @@ function ProductionAuthGate({ state }: { state: "loading" | "signin" | "unverifi
               ? "Checking your session."
               : isUnverified
                 ? "This Discord account is not verified in the WTUS server."
-                : "Sign in with Discord to continue."}
+                : needsOnboarding
+                  ? "You are verified in the WTUS server. Use an onboarding link to finish dashboard setup."
+                  : "Sign in with Discord to continue."}
           </p>
         </div>
-        {isUnverified ? (
+        {isUnverified || needsOnboarding ? (
           <button className="auth-button" type="button" onClick={() => signOut()}>
             <LogOut size={16} />
             <span>Sign out</span>
@@ -2027,6 +2030,10 @@ export function App() {
 
   if (!isDevelopmentFallback && !session?.user?.discordServerVerified) {
     return <ProductionAuthGate state="unverified" />;
+  }
+
+  if (!isDevelopmentFallback && (session?.user?.onboardingStatus !== "verified" || session?.user?.status !== "active")) {
+    return <ProductionAuthGate state="onboarding" />;
   }
 
   return (
