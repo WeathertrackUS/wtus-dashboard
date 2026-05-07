@@ -235,6 +235,20 @@ select:disabled {
   font-weight: 800;
 }
 
+.session-role {
+  border: 1px solid #dfe5ee;
+  background: #ffffff;
+  color: #526075;
+  border-radius: 8px;
+  padding: 9px 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .role-context {
   display: inline-flex;
   align-items: center;
@@ -910,6 +924,10 @@ label {
     width: 100%;
   }
 
+  .session-role {
+    width: 100%;
+  }
+
   .role-switcher button {
     flex: 1;
     min-width: 0;
@@ -1110,6 +1128,7 @@ label {
 .search-box,
 .role-switcher,
 .auth-button,
+.session-role,
 .metric,
 .panel,
 .onboarding-status > div,
@@ -1184,7 +1203,8 @@ textarea::placeholder {
 
 .primary-button,
 .text-button,
-.auth-button {
+.auth-button,
+.session-role {
   color: #ffffff;
 }
 
@@ -1192,7 +1212,8 @@ textarea::placeholder {
   color: #ff4b55;
 }
 
-.auth-button {
+.auth-button,
+.session-role {
   background: rgba(14, 17, 24, 0.86);
   border-color: rgba(255, 255, 255, 0.09);
 }

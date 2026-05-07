@@ -108,6 +108,12 @@ function canManageTeam(role: RoleView) {
   return role === "owner" || role === "operations";
 }
 
+function roleFromSession(globalRoles?: string[]): RoleView {
+  if (globalRoles?.includes("owner")) return "owner";
+  if (globalRoles?.includes("operations_lead")) return "operations";
+  return "member";
+}
+
 const statusLabels: Record<TaskStatus, string> = {
   todo: "To do",
   in_progress: "In progress",
@@ -179,12 +185,14 @@ function AppShell({
   setActive,
   role,
   setRole,
+  isDevelopmentFallback,
   children,
 }: {
   active: NavItem;
   setActive: (item: NavItem) => void;
   role: RoleView;
   setRole: (role: RoleView) => void;
+  isDevelopmentFallback: boolean;
   children: React.ReactNode;
 }) {
   const visibleNav = navItems.filter((item) => (canManageTeam(role) ? opsNavItems : memberNavItems).includes(item.id));
@@ -227,13 +235,20 @@ function AppShell({
               <Search size={17} />
               <input placeholder="Search tasks, members, events" />
             </label>
-            <div className="role-switcher" aria-label="Role view">
-              {(["owner", "operations", "member"] as RoleView[]).map((roleOption) => (
-                <button key={roleOption} className={role === roleOption ? "active" : ""} onClick={() => setRole(roleOption)} type="button">
-                  {roleLabel(roleOption)}
-                </button>
-              ))}
-            </div>
+            {isDevelopmentFallback ? (
+              <div className="role-switcher" aria-label="Local role preview">
+                {(["owner", "operations", "member"] as RoleView[]).map((roleOption) => (
+                  <button key={roleOption} className={role === roleOption ? "active" : ""} onClick={() => setRole(roleOption)} type="button">
+                    {roleLabel(roleOption)}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="session-role">
+                <ShieldCheck size={16} />
+                <span>{roleLabel(role)}</span>
+              </div>
+            )}
             <button className="auth-button" type="button" onClick={() => (isSignedIn ? signOut() : signIn("discord"))}>
               {isSignedIn ? <LogOut size={16} /> : <LogIn size={16} />}
               <span>{isSignedIn ? session.user?.name ?? "Sign out" : "Discord"}</span>
@@ -1594,6 +1609,9 @@ function AdminView({
 export function App() {
   const [active, setActive] = useStoredState<NavItem>("wtus.activeView", "dashboard");
   const [role, setRole] = useStoredState<RoleView>("wtus.roleView", "operations");
+  const { data: session, status } = useSession();
+  const isDevelopmentFallback = status !== "authenticated";
+  const effectiveRole = isDevelopmentFallback ? role : roleFromSession(session?.user?.globalRoles);
   const [members, setMembers] = useStoredState<Member[]>("wtus.members", initialMembers);
   const [invites, setInvites] = useStoredState<OnboardingInvite[]>("wtus.onboardingInvites", []);
   const [tasks, setTasks] = useStoredState<Task[]>("wtus.tasks", initialTasks);
@@ -1637,9 +1655,14 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const allowed = canManageTeam(role) ? opsNavItems : memberNavItems;
-    if (!allowed.includes(active)) setActive(role === "member" ? "dashboard" : "admin");
-  }, [active, role, setActive]);
+    if (isDevelopmentFallback) return;
+    setRole(effectiveRole);
+  }, [effectiveRole, isDevelopmentFallback, setRole]);
+
+  useEffect(() => {
+    const allowed = canManageTeam(effectiveRole) ? opsNavItems : memberNavItems;
+    if (!allowed.includes(active)) setActive(effectiveRole === "member" ? "dashboard" : "admin");
+  }, [active, effectiveRole, setActive]);
 
   const content = useMemo(() => {
     const updateTaskStatus = async (taskId: string, status: TaskStatus) => {
@@ -1709,8 +1732,8 @@ export function App() {
     if (active === "members") return <MembersView members={members} setMembers={setMembers} />;
     if (active === "sections") return <SectionsView tasks={tasks} members={members} />;
     if (active === "account") return <AccountView members={members} setMembers={setMembers} />;
-    if (active === "discord") return <DiscordView />;
-    if (active === "admin") {
+    if (active === "discord" && canManageTeam(effectiveRole)) return <DiscordView />;
+    if (active === "admin" && canManageTeam(effectiveRole)) {
       return (
         <AdminView
           coverage={coverage}
@@ -1718,7 +1741,7 @@ export function App() {
           setCoverage={setCoverage}
           events={events}
           invites={invites}
-          role={role}
+          role={effectiveRole}
           setInvites={setInvites}
         />
       );
@@ -1735,18 +1758,18 @@ export function App() {
         onAssignmentStatus={updateAssignmentStatus}
       />
     );
-  }, [active, availability, coverage, events, invites, members, role, tasks]);
+  }, [active, availability, coverage, effectiveRole, events, invites, members, tasks]);
 
   if (onboardingToken) {
     return <OnboardingPage invite={onboardingInvite} members={members} setMembers={setMembers} setInvites={setInvites} />;
   }
 
   return (
-    <AppShell active={active} setActive={setActive} role={role} setRole={setRole}>
+    <AppShell active={active} setActive={setActive} role={effectiveRole} setRole={setRole} isDevelopmentFallback={isDevelopmentFallback}>
       <div className="role-context">
         <Sparkles size={16} />
         <span>
-          View: <strong>{roleLabel(role)}</strong>
+          View: <strong>{roleLabel(effectiveRole)}</strong>
         </span>
       </div>
       {content}

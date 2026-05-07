@@ -61,6 +61,23 @@ Recommended first approach:
 3. Check whether that Discord user is in `DISCORD_GUILD_ID`.
 4. Let the bot handle ongoing Discord commands and alerts.
 
+### Discord Developer Portal Setup
+
+In the Discord Developer Portal, open the WTUS application and set:
+
+- OAuth2 redirect for local development: `http://localhost:3000/api/auth/callback/discord`
+- OAuth2 redirect for VPS production: `https://your-dashboard-domain.com/api/auth/callback/discord`
+
+The redirect must exactly match the app URL. If `.env` uses `NEXTAUTH_URL=http://localhost:3000`, use the localhost redirect above. If you test on `http://127.0.0.1:3000`, either switch `.env` to `NEXTAUTH_URL=http://127.0.0.1:3000` and add `http://127.0.0.1:3000/api/auth/callback/discord`, or keep opening the app at `http://localhost:3000`.
+
+Common causes of Discord's invalid OAuth link:
+
+- `DISCORD_CLIENT_ID` is missing or from the wrong Discord application.
+- `DISCORD_CLIENT_SECRET` is missing or from the wrong Discord application.
+- The redirect URI is not listed in OAuth2 redirects.
+- `NEXTAUTH_URL` does not match the host and port being used.
+- The app was not restarted after changing `.env`.
+
 ## Discord Bot
 
 The bot should not have its own separate dashboard state.
