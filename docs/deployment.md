@@ -47,7 +47,7 @@ Before real team use:
 - Back up the database at least daily
 - Keep deployment instructions in the repo
 
-In production, the main dashboard is behind Discord OAuth. Local role preview and browser localStorage fallback are development-only. Onboarding links stay reachable so a new member can connect Discord before their dashboard account exists.
+The main dashboard is behind Discord OAuth by default, including local testing. Local role preview and browser localStorage fallback only turn on when `NEXT_PUBLIC_ENABLE_LOCAL_PREVIEW=true`. Onboarding links stay reachable so a new member can connect Discord before their dashboard account exists.
 
 ## Minimum Environment Variables
 

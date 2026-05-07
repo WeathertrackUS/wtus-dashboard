@@ -41,7 +41,7 @@ import type {
 } from "./types";
 
 const wtusLogoSrc = typeof wtusLogo === "string" ? wtusLogo : wtusLogo.src;
-const isProductionRuntime = process.env.NODE_ENV === "production";
+const isLocalPreviewEnabled = process.env.NEXT_PUBLIC_ENABLE_LOCAL_PREVIEW === "true";
 
 type DashboardData = {
   members: Member[];
@@ -68,7 +68,7 @@ function useStoredState<T>(key: string, initialValue: T) {
   const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
-    if (isProductionRuntime || typeof window === "undefined") return;
+    if (!isLocalPreviewEnabled || typeof window === "undefined") return;
     const stored = window.localStorage.getItem(key);
     if (!stored) {
       setHasLoaded(true);
@@ -84,7 +84,7 @@ function useStoredState<T>(key: string, initialValue: T) {
   }, [key]);
 
   useEffect(() => {
-    if (isProductionRuntime || typeof window === "undefined" || !hasLoaded) return;
+    if (!isLocalPreviewEnabled || typeof window === "undefined" || !hasLoaded) return;
     window.localStorage.setItem(key, JSON.stringify(value));
   }, [hasLoaded, key, value]);
 
@@ -1865,7 +1865,7 @@ export function App() {
   const [active, setActive] = useStoredState<NavItem>("wtus.activeView", "dashboard");
   const [role, setRole] = useStoredState<RoleView>("wtus.roleView", "operations");
   const { data: session, status } = useSession();
-  const isDevelopmentFallback = !isProductionRuntime && status !== "authenticated";
+  const isDevelopmentFallback = isLocalPreviewEnabled && status !== "authenticated";
   const effectiveRole = isDevelopmentFallback ? role : roleFromSession(session?.user?.globalRoles);
   const [members, setMembers] = useStoredState<Member[]>("wtus.members", initialMembers);
   const [invites, setInvites] = useStoredState<OnboardingInvite[]>("wtus.onboardingInvites", []);
@@ -2021,11 +2021,11 @@ export function App() {
     return <OnboardingPage invite={onboardingInvite} members={members} setMembers={setMembers} setInvites={setInvites} />;
   }
 
-  if (isProductionRuntime && status !== "authenticated") {
+  if (!isDevelopmentFallback && status !== "authenticated") {
     return <ProductionAuthGate state={status === "loading" ? "loading" : "signin"} />;
   }
 
-  if (isProductionRuntime && !session?.user?.discordServerVerified) {
+  if (!isDevelopmentFallback && !session?.user?.discordServerVerified) {
     return <ProductionAuthGate state="unverified" />;
   }
 
