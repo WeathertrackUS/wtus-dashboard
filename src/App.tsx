@@ -618,12 +618,12 @@ function AvailabilityView({
   members: Member[];
   setAvailability: React.Dispatch<React.SetStateAction<AvailabilityWindow[]>>;
 }) {
-  function markAvailable(event: FormEvent<HTMLFormElement>) {
+  async function markAvailable(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const memberId = String(form.get("memberId") || "");
     if (!memberId) return;
-    const item: AvailabilityWindow = {
+    const fallbackItem: AvailabilityWindow = {
       id: `a${Date.now()}`,
       memberId,
       status: form.get("status") as AvailabilityWindow["status"],
@@ -634,6 +634,18 @@ function AvailabilityView({
       endsAt: String(form.get("endsAt")),
       notes: String(form.get("notes")),
     };
+    let item = fallbackItem;
+    try {
+      const response = await fetch("/api/availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallbackItem),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { availability: AvailabilityWindow };
+        item = data.availability;
+      }
+    } catch {}
     setAvailability((current) => [item, ...current]);
     event.currentTarget.reset();
   }
