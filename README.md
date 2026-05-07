@@ -115,6 +115,7 @@ This repository currently contains a Next.js + React + TypeScript operations das
 - Member creation with overlapping global and section roles
 - Availability entry creation
 - Live event creation with event-specific role assignments
+- Temporary coverage creation backed by the database
 - Invite-link onboarding flow outside the main dashboard chrome
 - Discord OAuth-backed invite completion
 - Owner/operations onboarding link management in Team Setup
@@ -168,10 +169,9 @@ Production/auth/Discord configuration starts from `.env.example`. Put real local
 
 1. Add comments/activity history on tasks.
 2. Add editable live event roles after event creation.
-3. Add temporary coverage management screens backed by the existing schema.
-4. Add the first WTUS Discord bot commands and alerts.
-5. Add VPS production deployment config.
-6. Add automated tests for the core workflows.
+3. Add the first WTUS Discord bot commands and alerts.
+4. Add VPS production deployment config.
+5. Add automated tests for the core workflows.
 
 ## What Not To Build Yet
 

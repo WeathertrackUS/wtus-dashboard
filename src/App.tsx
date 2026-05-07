@@ -1463,7 +1463,7 @@ function AdminView({
     }
   }
 
-  function addCoverage(event: FormEvent<HTMLFormElement>) {
+  async function addCoverage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const assigneeId = String(form.get("assigneeId") || "");
@@ -1482,7 +1482,19 @@ function AdminView({
       endsAt: String(form.get("endsAt")),
       status: "active",
     };
-    setCoverage((current) => [item, ...current]);
+    let coverageItem = item;
+    try {
+      const response = await fetch("/api/coverage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { coverage: TemporaryCoverage };
+        coverageItem = data.coverage;
+      }
+    } catch {}
+    setCoverage((current) => [coverageItem, ...current]);
     event.currentTarget.reset();
   }
 
