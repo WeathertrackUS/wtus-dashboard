@@ -1095,23 +1095,37 @@ function AccountView({
   const [memberId, setMemberId] = useState(members[0]?.id ?? "");
   const activeMember = members.find((member) => member.id === memberId) ?? members[0];
 
-  function saveAccount(event: FormEvent<HTMLFormElement>) {
+  async function saveAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeMember) return;
     const form = new FormData(event.currentTarget);
     const selectedSections = form.getAll("sections") as SectionKey[];
+    const fallbackMember: Member = {
+      ...activeMember,
+      name: String(form.get("name")),
+      handle: String(form.get("handle")).replace(/^@/, ""),
+      discordUserId: String(form.get("discordUserId")),
+      sections: selectedSections.map((section) => ({ section, role: "member" })),
+    };
+    let updatedMember = fallbackMember;
+    try {
+      const response = await fetch(`/api/members/${activeMember.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: fallbackMember.name,
+          handle: fallbackMember.handle,
+          discordUserId: fallbackMember.discordUserId,
+          sections: selectedSections,
+        }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { member: Member };
+        updatedMember = data.member;
+      }
+    } catch {}
     setMembers((current) =>
-      current.map((member) =>
-        member.id === activeMember.id
-          ? {
-              ...member,
-              name: String(form.get("name")),
-              handle: String(form.get("handle")).replace(/^@/, ""),
-              discordUserId: String(form.get("discordUserId")),
-              sections: selectedSections.map((section) => ({ section, role: "member" })),
-            }
-          : member,
-      ),
+      current.map((member) => (member.id === activeMember.id ? updatedMember : member)),
     );
   }
 
@@ -1194,16 +1208,34 @@ function MembersView({
   members: Member[];
   setMembers: React.Dispatch<React.SetStateAction<Member[]>>;
 }) {
-  function addMember(event: FormEvent<HTMLFormElement>) {
+  async function addMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const member: Member = {
+    const fallbackMember: Member = {
       id: `m${Date.now()}`,
       name: String(form.get("name")),
       handle: String(form.get("handle")),
       globalRoles: [String(form.get("globalRole") || "member")],
       sections: [{ section: form.get("section") as SectionKey, role: form.get("sectionRole") as "lead" | "member" }],
     };
+    let member = fallbackMember;
+    try {
+      const response = await fetch("/api/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: fallbackMember.name,
+          handle: fallbackMember.handle,
+          globalRole: fallbackMember.globalRoles[0],
+          section: fallbackMember.sections[0]?.section,
+          sectionRole: fallbackMember.sections[0]?.role,
+        }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { member: Member };
+        member = data.member;
+      }
+    } catch {}
     setMembers((current) => [member, ...current]);
     event.currentTarget.reset();
   }
