@@ -26,12 +26,12 @@ export async function POST(request: Request) {
   const handle = body?.handle?.trim().replace(/^@/, "");
   const selectedSections = cleanSections(body?.sections);
 
-  if (!token || !name || !handle) {
+  if (!name || !handle) {
     return NextResponse.json({ error: "Missing required onboarding fields" }, { status: 400 });
   }
 
-  const invite = await prisma.onboardingInvite.findUnique({ where: { token } });
-  if (!invite || invite.status !== "open") {
+  const invite = token ? await prisma.onboardingInvite.findUnique({ where: { token } }) : null;
+  if (token && (!invite || invite.status !== "open")) {
     return NextResponse.json({ error: "Invite is not open" }, { status: 409 });
   }
 
@@ -65,14 +65,16 @@ export async function POST(request: Request) {
       });
     }
 
-    await tx.onboardingInvite.update({
-      where: { id: invite.id },
-      data: {
-        status: "used",
-        usedByUserId: user.id,
-        usedAt: new Date(),
-      },
-    });
+    const usedInvite = invite
+      ? await tx.onboardingInvite.update({
+          where: { id: invite.id },
+          data: {
+            status: "used",
+            usedByUserId: user.id,
+            usedAt: new Date(),
+          },
+        })
+      : null;
 
     return {
       member: {
@@ -84,15 +86,17 @@ export async function POST(request: Request) {
         globalRoles: ["member"],
         sections: selectedSections.map((section) => ({ section, role: "member" as const })),
       } satisfies Member,
-      invite: {
-        id: invite.id,
-        token: invite.token,
-        label: invite.label,
-        createdByRole: "operations" as const,
-        createdAt: invite.createdAt.toLocaleString(),
-        status: "used" as const,
-        memberId: user.id,
-      },
+      invite: usedInvite
+        ? {
+            id: usedInvite.id,
+            token: usedInvite.token,
+            label: usedInvite.label,
+            createdByRole: "operations" as const,
+            createdAt: usedInvite.createdAt.toLocaleString(),
+            status: "used" as const,
+            memberId: user.id,
+          }
+        : undefined,
     };
   });
 

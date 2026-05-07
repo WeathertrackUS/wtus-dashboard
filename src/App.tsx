@@ -263,10 +263,9 @@ function AppShell({
   );
 }
 
-function ProductionAuthGate({ state }: { state: "loading" | "signin" | "unverified" | "onboarding" }) {
+function ProductionAuthGate({ state }: { state: "loading" | "signin" | "unverified" }) {
   const isLoading = state === "loading";
   const isUnverified = state === "unverified";
-  const needsOnboarding = state === "onboarding";
 
   return (
     <main className="onboarding-page">
@@ -285,12 +284,10 @@ function ProductionAuthGate({ state }: { state: "loading" | "signin" | "unverifi
               ? "Checking your session."
               : isUnverified
                 ? "This Discord account is not verified in the WTUS server."
-                : needsOnboarding
-                  ? "You are verified in the WTUS server. Use an onboarding link to finish dashboard setup."
-                  : "Sign in with Discord to continue."}
+                : "Sign in with Discord to continue."}
           </p>
         </div>
-        {isUnverified || needsOnboarding ? (
+        {isUnverified ? (
           <button className="auth-button" type="button" onClick={() => signOut()}>
             <LogOut size={16} />
             <span>Sign out</span>
@@ -1204,10 +1201,13 @@ function OnboardingPage({
   const discordVerified = session?.user?.discordServerVerified ?? false;
   const signedInName = session?.user?.name ?? "";
   const signedInHandle = session?.user?.discordHandle ?? session?.user?.name ?? "";
+  const canUseInvite = invite?.status === "open";
+  const canSelfOnboard = !invite && isSignedIn && discordVerified;
+  const canShowForm = canUseInvite || canSelfOnboard;
 
   async function submitOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!invite || invite.status !== "open" || !isSignedIn || !discordVerified) return;
+    if (!canShowForm || !isSignedIn || !discordVerified) return;
     const form = new FormData(event.currentTarget);
     const selectedSections = form.getAll("sections") as SectionKey[];
     const handle = String(form.get("handle")).replace(/^@/, "");
@@ -1221,13 +1221,13 @@ function OnboardingPage({
       sections: selectedSections.map((section) => ({ section, role: "member" })),
     };
     let member = fallbackMember;
-    let updatedInvite: OnboardingInvite = { ...invite, status: "used", memberId: fallbackMember.id };
+    let updatedInvite: OnboardingInvite | undefined = invite ? { ...invite, status: "used", memberId: fallbackMember.id } : undefined;
     try {
       const response = await fetch("/api/onboarding/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: invite.token,
+          token: invite?.token,
           name: fallbackMember.name,
           handle,
           sections: selectedSections,
@@ -1240,9 +1240,9 @@ function OnboardingPage({
       }
     } catch {}
     setMembers((current) => [member, ...current]);
-    setInvites((current) =>
-      current.map((item) => (item.id === invite.id ? updatedInvite : item)),
-    );
+    if (updatedInvite) {
+      setInvites((current) => current.map((item) => (item.id === updatedInvite.id ? updatedInvite : item)));
+    }
     event.currentTarget.reset();
   }
 
@@ -1257,10 +1257,10 @@ function OnboardingPage({
           </div>
         </div>
         <div className="onboarding-copy">
-          <StatusPill tone={invite?.status === "open" ? "green" : "amber"}>{invite?.status ?? "missing link"}</StatusPill>
+          <StatusPill tone={canShowForm ? "green" : "amber"}>{canSelfOnboard ? "discord verified" : invite?.status ?? "sign in"}</StatusPill>
           <h1>Join the WTUS dashboard</h1>
         </div>
-        {invite?.status === "open" ? (
+        {canShowForm || !isSignedIn ? (
           <form className="stack-form" onSubmit={submitOnboarding}>
             {!isSignedIn ? (
               <button className="primary-button" type="button" onClick={() => signIn("discord")}>
@@ -1292,7 +1292,7 @@ function OnboardingPage({
             </button>
           </form>
         ) : (
-          <EmptyState title="Link unavailable" body="Ask the owner or operations lead for a fresh link." />
+          <EmptyState title="Server check needed" body="Sign in with a Discord account that is in the WTUS server." />
         )}
       </section>
     </main>
@@ -2033,7 +2033,7 @@ export function App() {
   }
 
   if (!isDevelopmentFallback && (session?.user?.onboardingStatus !== "verified" || session?.user?.status !== "active")) {
-    return <ProductionAuthGate state="onboarding" />;
+    return <OnboardingPage members={members} setMembers={setMembers} setInvites={setInvites} />;
   }
 
   return (
