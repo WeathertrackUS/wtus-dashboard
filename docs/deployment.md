@@ -67,6 +67,22 @@ Create `.env` from `.env.example`. The first production pass should expect:
 
 `DISCORD_GUILD_ID` is required before the app can verify that an onboarding signup is actually in the WTUS Discord server.
 
+## Discord OAuth Redirects
+
+Discord requires an exact redirect match. For local testing with this repo's dev server, add this redirect in the Discord Developer Portal:
+
+```text
+http://127.0.0.1:3000/api/auth/callback/discord
+```
+
+For the VPS, add the public HTTPS version too:
+
+```text
+https://your-domain.example/api/auth/callback/discord
+```
+
+`APP_URL` and `NEXTAUTH_URL` must use the same origin as the redirect you are testing. `localhost` and `127.0.0.1` do not count as the same URL to Discord.
+
 ## Deployment Flow
 
 Initial simple flow:
