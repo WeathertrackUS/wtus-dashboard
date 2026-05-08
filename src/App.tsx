@@ -565,7 +565,8 @@ function TasksView({
 
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const assigneeId = String(form.get("assigneeId") || "");
     const fallbackTask: Task = {
       id: `t${Date.now()}`,
@@ -599,13 +600,14 @@ function TasksView({
     } catch {}
     setTasks((current) => [task, ...current]);
     setSelectedTaskId(task.id);
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   async function addTaskComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedTask) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const body = String(form.get("body") || "").trim();
     if (!body) return;
     const fallbackComment: TaskComment = {
@@ -631,7 +633,7 @@ function TasksView({
         task.id === selectedTask.id ? { ...task, comments: [comment, ...(task.comments ?? [])] } : task,
       ),
     );
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   async function editSelectedTask(event: FormEvent<HTMLFormElement>) {
@@ -837,7 +839,8 @@ function AvailabilityView({
 }) {
   async function markAvailable(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const memberId = String(form.get("memberId") || "");
     if (!memberId) return;
     const fallbackItem: AvailabilityWindow = {
@@ -864,7 +867,7 @@ function AvailabilityView({
       }
     } catch {}
     setAvailability((current) => [item, ...current]);
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   return (
@@ -976,7 +979,8 @@ function EventsView({
 
   async function createEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const fallbackEvent: LiveEvent = {
       id: `e${Date.now()}`,
       name: String(form.get("name")),
@@ -1007,13 +1011,14 @@ function EventsView({
     } catch {}
     setEvents((current) => [newEvent, ...current]);
     setEventId(newEvent.id);
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   async function addAssignment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeEvent) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const memberId = String(form.get("memberId") || "");
     if (!memberId) return;
     const fallbackAssignment: LiveEventAssignment = {
@@ -1041,7 +1046,7 @@ function EventsView({
     setEvents((current) =>
       current.map((item) => (item.id === activeEvent.id ? { ...item, assignments: [assignment, ...item.assignments] } : item)),
     );
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   const eventAvailability = activeEvent
@@ -1208,7 +1213,8 @@ function OnboardingPage({
   async function submitOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canShowForm || !isSignedIn || !discordVerified) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const selectedSections = form.getAll("sections") as SectionKey[];
     const handle = String(form.get("handle")).replace(/^@/, "");
     const fallbackMember: Member = {
@@ -1243,7 +1249,7 @@ function OnboardingPage({
     if (updatedInvite) {
       setInvites((current) => current.map((item) => (item.id === updatedInvite.id ? updatedInvite : item)));
     }
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   return (
@@ -1424,7 +1430,8 @@ function MembersView({
 }) {
   async function addMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const fallbackMember: Member = {
       id: `m${Date.now()}`,
       name: String(form.get("name")),
@@ -1451,7 +1458,7 @@ function MembersView({
       }
     } catch {}
     setMembers((current) => [member, ...current]);
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   return (
@@ -1624,7 +1631,8 @@ function AdminView({
 
   async function createInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const fallbackInvite: OnboardingInvite = {
       id: `oi${Date.now()}`,
       token: globalThis.crypto?.randomUUID?.() ?? `invite-${Date.now()}`,
@@ -1646,7 +1654,7 @@ function AdminView({
       }
     } catch {}
     setInvites((current) => [invite, ...current]);
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   async function setInviteStatus(inviteId: string, status: OnboardingInvite["status"]) {
@@ -1670,7 +1678,8 @@ function AdminView({
 
   async function addCoverage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const assigneeId = String(form.get("assigneeId") || "");
     if (!assigneeId) return;
     const scope = form.get("scope") as TemporaryCoverage["scope"];
@@ -1700,7 +1709,7 @@ function AdminView({
       }
     } catch {}
     setCoverage((current) => [coverageItem, ...current]);
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   return (
