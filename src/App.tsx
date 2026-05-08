@@ -1201,7 +1201,9 @@ function OnboardingPage({
   setMembers: React.Dispatch<React.SetStateAction<Member[]>>;
   setInvites: React.Dispatch<React.SetStateAction<OnboardingInvite[]>>;
 }) {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
+  const [submitState, setSubmitState] = useState<"idle" | "saving" | "error">("idle");
+  const [submitError, setSubmitError] = useState("");
   const isSignedIn = status === "authenticated";
   const discordVerified = session?.user?.discordServerVerified ?? false;
   const signedInName = session?.user?.name ?? "";
@@ -1212,7 +1214,9 @@ function OnboardingPage({
 
   async function submitOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canShowForm || !isSignedIn || !discordVerified) return;
+    if (!canShowForm || !isSignedIn || !discordVerified || submitState === "saving") return;
+    setSubmitState("saving");
+    setSubmitError("");
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const selectedSections = form.getAll("sections") as SectionKey[];
@@ -1239,17 +1243,24 @@ function OnboardingPage({
           sections: selectedSections,
         }),
       });
-      if (response.ok) {
-        const data = (await response.json()) as { member: Member; invite: OnboardingInvite };
-        member = data.member;
-        updatedInvite = data.invite;
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Onboarding failed");
       }
-    } catch {}
+      member = data.member;
+      updatedInvite = data.invite;
+    } catch (error) {
+      setSubmitState("error");
+      setSubmitError(error instanceof Error ? error.message : "Onboarding failed");
+      return;
+    }
     setMembers((current) => [member, ...current]);
     if (updatedInvite) {
       setInvites((current) => current.map((item) => (item.id === updatedInvite.id ? updatedInvite : item)));
     }
     formElement.reset();
+    await update();
+    window.location.assign("/");
   }
 
   return (
@@ -1293,8 +1304,9 @@ function OnboardingPage({
                 </label>
               ))}
             </fieldset>
-            <button className="primary-button" type="submit" disabled={!isSignedIn || !discordVerified}>
-              Submit
+            {submitError ? <p className="form-error">{submitError}</p> : null}
+            <button className="primary-button" type="submit" disabled={!isSignedIn || !discordVerified || submitState === "saving"}>
+              {submitState === "saving" ? "Saving..." : "Submit"}
             </button>
           </form>
         ) : (
