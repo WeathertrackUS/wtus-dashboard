@@ -102,6 +102,21 @@ The production migration command is:
 pnpm db:deploy
 ```
 
+## First Owner / Operations Lead
+
+The app does not auto-promote the first Discord login. To bootstrap leadership:
+
+1. Have the person sign in with Discord and finish onboarding.
+2. Get their Discord user ID.
+3. Run one of these commands:
+
+```bash
+pnpm admin:grant-role --discord-id DISCORD_USER_ID --role owner
+pnpm admin:grant-role --discord-id DISCORD_USER_ID --role operations_lead
+```
+
+Use this for the first owner, the operations lead, and emergency role repair. After an owner or operations lead exists, role management can move into the dashboard UI.
+
 ## Discord Bot Process
 
 The first bot entrypoint is `bot/index.ts`.
