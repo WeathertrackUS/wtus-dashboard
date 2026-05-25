@@ -1,4 +1,4 @@
-import type { AvailabilityWindow, LiveEvent, Member, SectionKey, Task, TemporaryCoverage } from "./types";
+import type { AvailabilityWindow, LiveEvent, Member, ReminderPreference, SectionKey, SpecialRequest, Task, TemporaryCoverage, WorkSubmission } from "./types";
 
 export const sections: Array<{ key: SectionKey; name: string; description: string }> = [
   { key: "finance", name: "Finance", description: "Budget, subscriptions, and expense tracking" },
@@ -12,7 +12,14 @@ export const sections: Array<{ key: SectionKey; name: string; description: strin
 ];
 
 export const initialMembers: Member[] = [];
+
 export const initialTasks: Task[] = [];
+
 export const initialAvailability: AvailabilityWindow[] = [];
+
 export const initialEvents: LiveEvent[] = [];
+
 export const initialCoverage: TemporaryCoverage[] = [];
+export const initialReminderPreferences: ReminderPreference[] = [];
+export const initialWorkSubmissions: WorkSubmission[] = [];
+export const initialSpecialRequests: SpecialRequest[] = [];
