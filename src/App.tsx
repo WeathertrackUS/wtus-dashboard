@@ -1014,24 +1014,24 @@ function TasksView({
       <div className="list-panel">
         <div className="list-panel-header">
           <PanelHeader icon={<ClipboardList size={19} />} title="Tasks" />
-          <div className="list-panel-toolbar">
-            <label>
-              <select value={sectionFilter} onChange={(e) => setSectionFilter(e.target.value as SectionKey | "all")}>
-                <option value="all">All sections</option>
-                {sections.map((s) => (
-                  <option key={s.key} value={s.key}>{s.name}</option>
-                ))}
-              </select>
-            </label>
-            <button className="btn btn-secondary" type="button" onClick={() => window.open(leantimeUrl, "_blank", "noreferrer")}>
-              Open Leantime
-              <ChevronRight size={15} />
-            </button>
-            <button className="btn btn-primary" type="button" onClick={() => setShowCreate(true)}>
-              <Plus size={15} />
-              New task
-            </button>
-          </div>
+          <button className="btn btn-primary" type="button" onClick={() => setShowCreate(true)}>
+            <Plus size={15} />
+            New
+          </button>
+        </div>
+        <div className="list-panel-toolbar">
+          <label style={{ flex: 1 }}>
+            <select value={sectionFilter} onChange={(e) => setSectionFilter(e.target.value as SectionKey | "all")}>
+              <option value="all">All sections</option>
+              {sections.map((s) => (
+                <option key={s.key} value={s.key}>{s.name}</option>
+              ))}
+            </select>
+          </label>
+          <button className="btn btn-secondary" type="button" onClick={() => window.open(leantimeUrl, "_blank", "noreferrer")}>
+            Open Leantime
+            <ChevronRight size={15} />
+          </button>
         </div>
         <div className="list-items">
           {visibleTasks.length ? (
