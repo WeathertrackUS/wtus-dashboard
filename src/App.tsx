@@ -14,6 +14,7 @@ import {
   ListChecks,
   LogIn,
   LogOut,
+  Menu,
   Plus,
   RadioTower,
   Search,
@@ -24,6 +25,7 @@ import {
   Trash2,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import React from "react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -276,7 +278,7 @@ function formatElapsedSince(value?: string) {
   return `${hours}h${mins ? ` ${mins}m` : ""}`;
 }
 
-function Topbar({ pageTitle, eyebrow, onSearch }: { pageTitle: string; eyebrow: string; onSearch: () => void }) {
+function Topbar({ pageTitle, eyebrow, onSearch, onMenuToggle }: { pageTitle: string; eyebrow: string; onSearch: () => void; onMenuToggle: () => void }) {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -295,6 +297,9 @@ function Topbar({ pageTitle, eyebrow, onSearch }: { pageTitle: string; eyebrow: 
 
   return (
     <header className="topbar">
+      <button className="topbar-menu-btn" onClick={onMenuToggle} type="button" aria-label="Toggle sidebar">
+        <Menu size={18} />
+      </button>
       <div className="topbar-title">
         <span className="eyebrow">{eyebrow}</span>
         <h1>{pageTitle}</h1>
@@ -394,6 +399,7 @@ function AppShell({
   const { data: session, status } = useSession();
   const isSignedIn = status === "authenticated";
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const activeEvent = events.find((event) => event.status === "active");
   const meta = pageMeta[active] ?? pageMeta.dashboard;
   const urgentCount = tasks.filter((task) => task.priority === "urgent").length;
@@ -411,7 +417,8 @@ function AppShell({
 
   return (
     <div className="app" data-screen-label={`WTUS - ${meta.title}`}>
-      <aside className="sidebar">
+      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+      <aside className={`sidebar${sidebarOpen ? " sidebar-open" : ""}`}>
         <div className="sidebar-brand">
           <div className="sidebar-logo" role="img" aria-label="WTUS" />
           <span className="sidebar-brand-eyebrow">Ops Hub</span>
@@ -429,7 +436,7 @@ function AppShell({
             const Icon = item.icon;
             const count = item.id === "tasks" ? urgentCount : item.id === "events" && activeEvent ? 1 : item.id === "members" ? members.length : item.id === "sections" ? sections.length : null;
             return (
-              <button className={active === item.id ? "nav-item active" : "nav-item"} key={item.id} onClick={() => setActive(item.id)} type="button">
+              <button className={active === item.id ? "nav-item active" : "nav-item"} key={item.id} onClick={() => { setActive(item.id); setSidebarOpen(false); }} type="button">
                 <Icon size={16} />
                 <span>{item.label}</span>
                 {count ? <span className={item.id === "tasks" || item.id === "events" ? "nav-badge" : "nav-count"}>{count}</span> : null}
@@ -490,7 +497,7 @@ function AppShell({
         </div>
       </aside>
       <main className="main">
-        <Topbar pageTitle={meta.title} eyebrow={meta.eyebrow} onSearch={() => setCmdOpen(true)} />
+        <Topbar pageTitle={meta.title} eyebrow={meta.eyebrow} onSearch={() => setCmdOpen(true)} onMenuToggle={() => setSidebarOpen((o) => !o)} />
         {children}
       </main>
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={(item) => { setActive(item); setCmdOpen(false); }} />
