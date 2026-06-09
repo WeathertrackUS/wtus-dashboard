@@ -96,6 +96,26 @@ Initial simple flow:
 7. Restart the Discord bot service if bot code changed.
 8. Confirm the health page, login, and bot status work.
 
+### GitHub Actions deploy
+
+The repo now includes `.github/workflows/deploy.yml` for push-to-`main` deploys and manual runs.
+
+Required GitHub secrets:
+
+- `WTUS_VPS_HOST`
+- `WTUS_VPS_USER`
+- `WTUS_VPS_SSH_KEY`
+
+The workflow:
+
+1. Syncs the repository to `/opt/wtus-dashboard` on the VPS.
+2. Runs `pnpm install --frozen-lockfile`.
+3. Runs `pnpm db:deploy`.
+4. Builds the app with `pnpm build`.
+5. Copies the standalone static assets into place.
+6. Restarts `wtus-dashboard` and `wtus-bot`.
+7. Verifies the dashboard service is active.
+
 The production migration command is:
 
 ```bash

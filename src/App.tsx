@@ -31,6 +31,7 @@ import {
 import React from "react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { BotConfigView } from "./bot-config-view";
 import {
   initialAvailability,
@@ -522,9 +523,23 @@ function AppShell({
   );
 }
 
-function ProductionAuthGate({ state }: { state: "loading" | "signin" | "unverified" }) {
+function ProductionAuthGate({
+  state,
+  errorCode,
+}: {
+  state: "loading" | "signin" | "unverified";
+  errorCode?: string | null;
+}) {
   const isLoading = state === "loading";
   const isUnverified = state === "unverified";
+  const errorMessage =
+    errorCode === "OAuthCallback" || errorCode === "OAuthSignin"
+      ? "Sign-in failed while creating or loading your session. Check the dashboard and database service on the VPS, then try again."
+      : errorCode === "AccessDenied"
+        ? "Access was denied by the provider."
+        : errorCode
+          ? `Sign-in error: ${errorCode}`
+          : null;
 
   return (
     <main className="auth-page">
@@ -545,6 +560,7 @@ function ProductionAuthGate({ state }: { state: "loading" | "signin" | "unverifi
                 ? "This Discord account is not verified in the WTUS server."
                 : "Sign in with Discord to continue."}
           </p>
+          {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
         </div>
         {isUnverified ? (
           <button className="btn btn-secondary" type="button" onClick={() => signOut()}>
@@ -3286,6 +3302,7 @@ export function App() {
   const [active, setActive] = useStoredState<NavItem>("wtus.activeView", "dashboard");
   const [role, setRole] = useStoredState<RoleView>("wtus.roleView", "operations");
   const { data: session, status } = useSession();
+  const searchParams = useSearchParams();
   const isDevelopmentFallback = isLocalPreviewEnabled && status !== "authenticated";
   const effectiveRole = isDevelopmentFallback ? role : roleFromSession(session?.user?.globalRoles);
   const [members, setMembers] = useStoredState<Member[]>("wtus.members", initialMembers);
@@ -3299,6 +3316,7 @@ export function App() {
   const [workSubmissions, setWorkSubmissions] = useStoredState<WorkSubmission[]>("wtus.workSubmissions", initialWorkSubmissions);
   const [specialRequests, setSpecialRequests] = useStoredState<SpecialRequest[]>("wtus.specialRequests", initialSpecialRequests);
   const [hash, setHash] = useState("");
+  const authError = searchParams.get("error");
   const onboardingToken = hash.match(/^#\/onboard\/([^/]+)$/)?.[1];
   const onboardingInvite = invites.find((invite) => invite.token === onboardingToken);
 
@@ -3447,17 +3465,17 @@ export function App() {
     );
   }, [active, availability, coverage, effectiveRole, events, invites, members, reminderPreferences, specialRequests, tasks, workSubmissions]);
 
-  if (onboardingToken) {
-    return <OnboardingPage invite={onboardingInvite} members={members} setMembers={setMembers} setInvites={setInvites} />;
-  }
+    if (onboardingToken) {
+      return <OnboardingPage invite={onboardingInvite} members={members} setMembers={setMembers} setInvites={setInvites} />;
+    }
 
-  if (!isDevelopmentFallback && status !== "authenticated") {
-    return <ProductionAuthGate state={status === "loading" ? "loading" : "signin"} />;
-  }
+    if (!isDevelopmentFallback && status !== "authenticated") {
+      return <ProductionAuthGate state={status === "loading" ? "loading" : "signin"} errorCode={authError} />;
+    }
 
-  if (!isDevelopmentFallback && !session?.user?.discordServerVerified) {
-    return <ProductionAuthGate state="unverified" />;
-  }
+    if (!isDevelopmentFallback && !session?.user?.discordServerVerified) {
+      return <ProductionAuthGate state="unverified" errorCode={authError} />;
+    }
 
   if (!isDevelopmentFallback && (session?.user?.onboardingStatus !== "verified" || session?.user?.status !== "active")) {
     return <OnboardingPage members={members} setMembers={setMembers} setInvites={setInvites} />;

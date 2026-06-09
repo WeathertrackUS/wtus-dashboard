@@ -1,0 +1,83 @@
+name: Deploy WTUS Dashboard
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: wtus-dashboard-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      APP_PATH: /opt/wtus-dashboard
+      RELEASE_TAG: ${{ github.sha }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        shell: bash
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.WTUS_VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.WTUS_VPS_HOST }}" >> ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host wtus-vps
+            HostName ${{ secrets.WTUS_VPS_HOST }}
+            User ${{ secrets.WTUS_VPS_USER }}
+            IdentityFile ~/.ssh/id_ed25519
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Sync source to VPS
+        shell: bash
+        run: |
+          ssh wtus-vps "mkdir -p '${APP_PATH}'"
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.next' \
+            --exclude 'node_modules' \
+            --exclude 'deploy.tar' \
+            --exclude 'deploy4.tar.gz' \
+            --exclude '.env' \
+            --exclude '.env.local' \
+            --exclude '.env.production' \
+            ./ wtus-vps:"${APP_PATH}"/
+
+      - name: Install, migrate, build, and restart
+        shell: bash
+        run: |
+          ssh wtus-vps <<'EOF'
+          set -euo pipefail
+          cd /opt/wtus-dashboard
+
+          pnpm install --frozen-lockfile
+          pnpm db:deploy
+          pnpm build
+
+          rm -rf .next/standalone/.next/static .next/standalone/public
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+          chown -R wtus:wtus .next/standalone
+
+          systemctl restart wtus-dashboard
+          if systemctl list-unit-files | grep -q '^wtus-bot\.service'; then
+            systemctl restart wtus-bot
+          fi
+          systemctl is-active --quiet wtus-dashboard
+          EOF
+
+      - name: Verify services
+        shell: bash
+        run: |
+          ssh wtus-vps "systemctl is-active wtus-dashboard && systemctl status --no-pager --full wtus-dashboard | sed -n '1,12p'"
