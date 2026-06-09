@@ -17,6 +17,7 @@ import {
   Menu,
   Plus,
   RadioTower,
+  Repeat,
   Search,
   Send,
   Settings,
@@ -30,6 +31,7 @@ import {
 import React from "react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { BotConfigView } from "./bot-config-view";
 import {
   initialAvailability,
   initialCoverage,
@@ -49,6 +51,7 @@ import type {
   Member,
   OnboardingInvite,
   Priority,
+  RecurringSchedule,
   ReminderFrequency,
   ReminderPreference,
   RoleView,
@@ -65,7 +68,7 @@ import type {
 const wtusLogoSrc = typeof wtusLogo === "string" ? wtusLogo : wtusLogo.src;
 const isLocalPreviewEnabled = process.env.NEXT_PUBLIC_ENABLE_LOCAL_PREVIEW === "true";
 // Bump this version whenever the shape of cached data changes so stale localStorage is discarded.
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const leantimeUrl = "https://tasks.weathertrackus.com";
 const startDiscordLogin = () => {
   if (typeof window === "undefined") return;
@@ -81,6 +84,7 @@ type DashboardData = {
   invites: OnboardingInvite[];
   tasks: Task[];
   availability: AvailabilityWindow[];
+  recurringSchedules: RecurringSchedule[];
   liveEvents: LiveEvent[];
   coverage: TemporaryCoverage[];
   reminderPreferences: ReminderPreference[];
@@ -336,22 +340,35 @@ function Topbar({ pageTitle, eyebrow, onSearch, onMenuToggle }: { pageTitle: str
 
 function CommandPalette({ open, onClose, onNavigate }: { open: boolean; onClose: () => void; onNavigate: (item: NavItem) => void }) {
   const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) window.setTimeout(() => inputRef.current?.focus(), 10);
-    else setQuery("");
+    else { setQuery(""); setSelectedIndex(0); }
   }, [open]);
+
+  const options = navItems.filter((item) => item.label.toLowerCase().includes(query.toLowerCase()));
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query]);
+
+  function onKeyDown(event: React.KeyboardEvent) {
+    if (event.key === "Escape") { onClose(); return; }
+    if (event.key === "Enter" && options.length > 0) { onNavigate(options[selectedIndex].id); return; }
+    if (event.key === "ArrowDown") { event.preventDefault(); setSelectedIndex((i) => Math.min(i + 1, options.length - 1)); return; }
+    if (event.key === "ArrowUp") { event.preventDefault(); setSelectedIndex((i) => Math.max(i - 1, 0)); return; }
+  }
 
   if (!open) return null;
 
-  const options = navItems.filter((item) => item.label.toLowerCase().includes(query.toLowerCase()));
   return (
     <div className="cmdk-overlay" onClick={onClose}>
       <div className="cmdk" onClick={(event) => event.stopPropagation()}>
         <div className="cmdk-input-wrap">
           <Search size={16} />
-          <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === "Escape" && onClose()} placeholder="What do you need to do?" />
+          <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={onKeyDown} placeholder="What do you need to do?" />
           <span className="cmdk-esc">ESC</span>
         </div>
         <div className="cmdk-list">
@@ -359,7 +376,7 @@ function CommandPalette({ open, onClose, onNavigate }: { open: boolean; onClose:
           {options.map((item, index) => {
             const Icon = item.icon;
             return (
-              <button key={item.id} className={`cmdk-row ${index === 0 ? "sel" : ""}`} onClick={() => onNavigate(item.id)} type="button">
+              <button key={item.id} className={`cmdk-row ${index === selectedIndex ? "sel" : ""}`} onClick={() => onNavigate(item.id)} type="button">
                 <Icon size={15} />
                 <span>Go to {item.label}</span>
               </button>
@@ -623,7 +640,7 @@ function AvailabilityRow({ item, members }: { item: AvailabilityWindow; members:
       <div>
         <strong>{memberName(members, item.memberId)}</strong>
         <span>
-          {item.helpRole} · {item.startsAt}-{item.endsAt}
+          {item.helpRole} · {formatAvailabilityTime(item.startsAt)}-{formatAvailabilityTime(item.endsAt)}
         </span>
       </div>
       <StatusPill tone={item.status === "available" ? "green" : item.status === "maybe" ? "amber" : "slate"}>{item.status}</StatusPill>
@@ -1273,16 +1290,102 @@ function TasksView({
   );
 }
 
+function formatAvailabilityTime(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function expandRecurring(schedules: RecurringSchedule[], targetDate: Date): AvailabilityWindow[] {
+  const dayOfWeek = targetDate.getDay();
+  const result: AvailabilityWindow[] = [];
+  for (const s of schedules) {
+    if (s.dayOfWeek !== dayOfWeek) continue;
+    const [sh, sm] = s.startTime.split(":").map(Number);
+    const [eh, em] = s.endTime.split(":").map(Number);
+    const start = new Date(targetDate);
+    start.setHours(sh, sm, 0, 0);
+    const end = new Date(targetDate);
+    end.setHours(eh, em, 0, 0);
+    result.push({
+      id: `recurring-${s.id}`,
+      memberId: s.userId,
+      status: s.status,
+      helpRole: "General",
+      startsAt: start.toISOString(),
+      endsAt: end.toISOString(),
+      notes: s.notes,
+    });
+  }
+  return result;
+}
+
+function mergeAvailability(oneTime: AvailabilityWindow[], recurring: RecurringSchedule[], targetDate: Date): AvailabilityWindow[] {
+  const virtual = expandRecurring(recurring, targetDate);
+  const merged = [...oneTime];
+  for (const v of virtual) {
+    const vStart = new Date(v.startsAt).getTime();
+    const vEnd = new Date(v.endsAt).getTime();
+    const hasOverlap = oneTime.some((o) => {
+      if (o.memberId !== v.memberId) return false;
+      const oStart = new Date(o.startsAt).getTime();
+      const oEnd = new Date(o.endsAt).getTime();
+      return oStart < vEnd && oEnd > vStart;
+    });
+    if (!hasOverlap) merged.push(v);
+  }
+  return merged;
+}
+
 function AvailabilityView({
   availability,
   members,
   setAvailability,
+  recurringSchedules,
+  setRecurringSchedules,
+  currentUserId,
 }: {
   availability: AvailabilityWindow[];
   members: Member[];
   setAvailability: React.Dispatch<React.SetStateAction<AvailabilityWindow[]>>;
+  recurringSchedules: RecurringSchedule[];
+  setRecurringSchedules: React.Dispatch<React.SetStateAction<RecurringSchedule[]>>;
+  currentUserId: string;
 }) {
   const [mode, setMode] = useState<"today" | "week" | "month">("today");
+
+  function parseLocalTime(value: string): Date {
+    const now = new Date();
+    const lower = value.toLowerCase().trim();
+    if (lower === "now" || lower === "asap") return now;
+    const m12 = lower.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/);
+    if (m12) {
+      let h = parseInt(m12[1], 10);
+      const min = parseInt(m12[2] ?? "0", 10);
+      if (m12[3] === "pm" && h < 12) h += 12;
+      if (m12[3] === "am" && h === 12) h = 0;
+      const d = new Date(now);
+      d.setHours(h, min, 0, 0);
+      return d;
+    }
+    const m24 = lower.match(/^(\d{1,2})(?::(\d{2}))?$/);
+    if (m24) {
+      const h = parseInt(m24[1], 10);
+      const min = parseInt(m24[2] ?? "0", 10);
+      const d = new Date(now);
+      d.setHours(h, min, 0, 0);
+      return d;
+    }
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? now : d;
+  }
 
   async function markAvailable(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1290,13 +1393,17 @@ function AvailabilityView({
     const form = new FormData(formElement);
     const memberId = String(form.get("memberId") || "");
     if (!memberId) return;
+    const rawStartsAt = String(form.get("startsAt") || "Now");
+    const rawEndsAt = String(form.get("endsAt") || "9:00 PM");
+    const startsAtDate = parseLocalTime(rawStartsAt);
+    const endsAtDate = parseLocalTime(rawEndsAt);
     const fallbackItem: AvailabilityWindow = {
       id: `a${Date.now()}`,
       memberId,
       status: form.get("status") as AvailabilityWindow["status"],
-      helpRole: String(form.get("helpRole")),
-      startsAt: String(form.get("startsAt")),
-      endsAt: String(form.get("endsAt")),
+      helpRole: "General",
+      startsAt: startsAtDate.toISOString(),
+      endsAt: endsAtDate.toISOString(),
       notes: String(form.get("notes")),
     };
     let item = fallbackItem;
@@ -1311,19 +1418,36 @@ function AvailabilityView({
         item = data.availability;
       }
     } catch {}
-    setAvailability((cur) => [item, ...cur]);
+    setAvailability((cur) => {
+      const nStart = startsAtDate.getTime();
+      const nEnd = endsAtDate.getTime();
+      const kept = cur.filter((a) => {
+        if (a.memberId !== memberId) return true;
+        const aStart = new Date(a.startsAt).getTime();
+        const aEnd = new Date(a.endsAt).getTime();
+        return !(aStart < nEnd && aEnd > nStart);
+      });
+      return [item, ...kept];
+    });
     formElement.reset();
+  }
+
+  async function deleteAvailability(id: string) {
+    try {
+      const resp = await fetch(`/api/availability/${id}`, { method: "DELETE" });
+      if (resp.ok) setAvailability((cur) => cur.filter((a) => a.id !== id));
+    } catch {}
   }
 
   const TODAY_HOURS = ["06","07","08","09","10","11","12","13","14","15","16","17","18","19","20","21","22","23"];
 
-  // Parse a user-entered time string to a 24h hour number (best-effort)
   function parseHour(s: string): number | null {
     if (!s) return null;
     const lower = s.toLowerCase().trim();
     if (lower === "now" || lower === "asap") return new Date().getHours();
     if (lower.includes("event end") || lower === "late" || lower === "midnight") return 24;
-    // "9:00 PM", "9 PM", "21:00", "21"
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return d.getHours();
     const m12 = lower.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/);
     if (m12) {
       let h = parseInt(m12[1], 10);
@@ -1339,37 +1463,54 @@ function AvailabilityView({
   const today = new Date();
   const nowHour = today.getHours();
 
-  // Build hourly rows from REAL availability data
+  // Merge one-time + recurring for today
+  const todayMerged = mergeAvailability(availability, recurringSchedules, today);
+
+  // Build hourly rows from ALL availability windows per member
   const hourlyRows = members.map((m) => {
-    const av = availability.find((a) => a.memberId === m.id);
-    if (!av) return { member: m, hours: TODAY_HOURS.map(() => "unavail") };
-    const chipStatus = av.status === "available" ? "avail" : av.status === "maybe" ? "maybe" : "unavail";
-    const startH = parseHour(av.startsAt) ?? nowHour;
-    const endH   = parseHour(av.endsAt)   ?? 23;
+    const memberAvs = todayMerged.filter((a) => a.memberId === m.id);
+    if (!memberAvs.length) return { member: m, hours: TODAY_HOURS.map(() => "unavail") };
     const hours = TODAY_HOURS.map((h) => {
-      const n = parseInt(h, 10);
-      if (n < startH || n > endH) return "unavail";
-      return chipStatus;
+      const hourNum = parseInt(h, 10);
+      for (const av of memberAvs) {
+        const startH = parseHour(av.startsAt) ?? nowHour;
+        const endH = parseHour(av.endsAt) ?? 23;
+        if (hourNum >= startH && hourNum <= endH) {
+          return av.status === "available" ? "avail" : av.status === "maybe" ? "maybe" : "unavail";
+        }
+      }
+      return "unavail";
     });
     return { member: m, hours };
   });
 
-  // Weekly rows — show today's status for all 7 days (real data: same window)
-  const weekDays: Array<{ label: string; date: number; today: boolean }> = [];
+  function dayInWindow(dayDate: Date, w: AvailabilityWindow): boolean {
+    const wStart = new Date(w.startsAt);
+    const wEnd = new Date(w.endsAt);
+    const dayStart = new Date(dayDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayDate);
+    dayEnd.setHours(23, 59, 59, 999);
+    return dayStart < wEnd && dayEnd > wStart;
+  }
+
+  // Weekly rows — check each day against ALL windows per member
+  const weekDays: Array<{ label: string; date: number; fullDate: Date; today: boolean }> = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() + i);
-    weekDays.push({ label: d.toLocaleDateString("en-US", { weekday: "short" }), date: d.getDate(), today: i === 0 });
+    weekDays.push({ label: d.toLocaleDateString("en-US", { weekday: "short" }), date: d.getDate(), fullDate: d, today: i === 0 });
   }
   const weekRows = members.map((m) => {
-    const av = availability.find((a) => a.memberId === m.id);
-    const chipStatus = !av ? "unavail" : av.status === "available" ? "avail" : av.status === "maybe" ? "maybe" : "unavail";
-    // Day 0 = today (use real status), future days fade to maybe if avail
-    const days = weekDays.map((_, i) => {
-      if (i === 0) return chipStatus;
-      if (chipStatus === "unavail") return "unavail";
-      if (i >= 5) return chipStatus === "avail" ? "maybe" : "unavail";
-      return chipStatus;
+    const days = weekDays.map((day) => {
+      const dayMerged = mergeAvailability(availability, recurringSchedules, day.fullDate);
+      const memberAvs = dayMerged.filter((a) => a.memberId === m.id);
+      for (const av of memberAvs) {
+        if (dayInWindow(day.fullDate, av)) {
+          return av.status === "available" ? "avail" : av.status === "maybe" ? "maybe" : "unavail";
+        }
+      }
+      return "unavail";
     });
     return { member: m, days };
   });
@@ -1385,7 +1526,8 @@ function AvailabilityView({
     const isPast = d < new Date(today.toDateString());
     const isToday = d.toDateString() === today.toDateString();
     // Show availability entries on today; future days show members marked available
-    const entries = (isToday || !isPast) ? availability
+    const dayMerged = mergeAvailability(availability, recurringSchedules, d);
+    const entries = (isToday || !isPast) ? dayMerged
       .map((a) => {
         const mem = members.find((x) => x.id === a.memberId);
         if (!mem) return null;
@@ -1396,7 +1538,7 @@ function AvailabilityView({
   }
   const monthLabel = today.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
-  const availableNow = availability.filter((a) => a.status === "available");
+  const availableNow = todayMerged.filter((a) => a.status === "available");
 
   return (
     <div className="page">
@@ -1557,8 +1699,13 @@ function AvailabilityView({
                 </div>
                 <div className="lr-info">
                   <strong>{memberName(members, item.memberId)}</strong>
-                  <span>{item.helpRole} · until {item.endsAt}</span>
+                  <span>{item.helpRole} · until {formatAvailabilityTime(item.endsAt)}</span>
                 </div>
+                {item.memberId === currentUserId && (
+                  <button className="btn-icon" onClick={() => deleteAvailability(item.id)} title="Remove availability" style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", color: "var(--text-4)", padding: 4 }}>
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             )) : (
               <div style={{ padding: "20px 18px" }}><EmptyState title="No one available now" body="Check back during storm events." /></div>
@@ -1572,14 +1719,7 @@ function AvailabilityView({
           </div>
           <div className="card-body">
             <form onSubmit={markAvailable}>
-              <div className="field">
-                <label>Member</label>
-                <select name="memberId" className="select-input" disabled={!members.length}>
-                  {members.length ? members.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  )) : <option value="">Add a member first</option>}
-                </select>
-              </div>
+              <input type="hidden" name="memberId" value={currentUserId} />
               <div className="field">
                 <label>Status</label>
                 <select name="status" className="select-input" defaultValue="available">
@@ -1588,19 +1728,41 @@ function AvailabilityView({
                   <option value="unavailable">Unavailable</option>
                 </select>
               </div>
-              <div className="field">
-                <label>Role / How can you help</label>
-                <input name="helpRole" className="select-input" defaultValue="Live event help" />
-              </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div className="field">
                   <label>From</label>
-                  <input name="startsAt" className="select-input" defaultValue="Now" />
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input name="startsAt" id="startsAt" type="time" className="select-input" style={{ flex: 1 }} />
+                    <button type="button" className="btn btn-sm btn-secondary" style={{ whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => {
+                      const now = new Date();
+                      const hh = String(now.getHours()).padStart(2, "0");
+                      const mm = String(now.getMinutes()).padStart(2, "0");
+                      const el = document.getElementById("startsAt") as HTMLInputElement;
+                      if (el) el.value = `${hh}:${mm}`;
+                    }}>Now</button>
+                  </div>
                 </div>
                 <div className="field">
                   <label>To</label>
-                  <input name="endsAt" className="select-input" defaultValue="9:00 PM" />
+                  <input name="endsAt" id="endsAt" type="time" className="select-input" />
                 </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "4px 0 8px" }}>
+                {["1h","2h","4h","8h"].map((dur) => {
+                  const hours = parseInt(dur, 10);
+                  return (
+                    <button key={dur} type="button" className="btn btn-xs btn-secondary" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => {
+                      const startEl = document.getElementById("startsAt") as HTMLInputElement;
+                      const endEl = document.getElementById("endsAt") as HTMLInputElement;
+                      if (!startEl?.value) { startEl.value = new Date().toTimeString().slice(0, 5); }
+                      const [sh, sm] = startEl.value.split(":").map(Number);
+                      const startMin = sh * 60 + sm + hours * 60;
+                      const eh = Math.floor((startMin / 60) % 24);
+                      const em = startMin % 60;
+                      endEl.value = `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`;
+                    }}>{dur}</button>
+                  );
+                })}
               </div>
               <div className="field">
                 <label>Notes (optional)</label>
@@ -1608,6 +1770,91 @@ function AvailabilityView({
               </div>
               <button className="btn btn-primary btn-sm" type="submit" style={{ width: "100%", justifyContent: "center" }} disabled={!members.length}>
                 Save availability
+              </button>
+            </form>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-header">
+            <span className="header-icon"><Repeat size={14} /></span>
+            <h2>Recurring schedule</h2>
+            <span className="eyebrow">{recurringSchedules.length} RULES</span>
+          </div>
+          <div className="card-body">
+            {recurringSchedules.length > 0 && (
+              <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                {recurringSchedules.map((s) => {
+                  const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+                  return (
+                    <div key={s.id} className="list-row" style={{ padding: "6px 8px", fontSize: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <strong>{dayNames[s.dayOfWeek]}</strong> {s.startTime}-{s.endTime}
+                        <span style={{ marginLeft: 8, color: "var(--text-4)" }}>· {s.status}</span>
+                      </div>
+                      <button className="btn-icon" onClick={async () => {
+                        await fetch(`/api/availability/recurring/${s.id}`, { method: "DELETE" });
+                        setRecurringSchedules((cur) => cur.filter((x) => x.id !== s.id));
+                      }} title="Remove recurring" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-4)", padding: 4 }}>
+                        <X size={13} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <form onSubmit={async (event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              const dayOfWeek = parseInt(String(form.get("recurringDay")), 10);
+              const startTime = String(form.get("recurringStart") || "09:00");
+              const endTime = String(form.get("recurringEnd") || "17:00");
+              const status = String(form.get("recurringStatus") || "available");
+              try {
+                const resp = await fetch("/api/availability/recurring", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ dayOfWeek, startTime, endTime, status }),
+                });
+                if (resp.ok) {
+                  const data = await resp.json();
+                  setRecurringSchedules((cur) => {
+                    const filtered = cur.filter((x) => !(x.dayOfWeek === dayOfWeek && x.startTime === startTime));
+                    return [...filtered, data.schedule].sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime));
+                  });
+                  event.currentTarget.reset();
+                }
+              } catch {}
+            }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div className="field">
+                  <label>Day</label>
+                  <select name="recurringDay" className="select-input" defaultValue="1">
+                    {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((name, i) => (
+                      <option key={i} value={i}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Status</label>
+                  <select name="recurringStatus" className="select-input" defaultValue="available">
+                    <option value="available">Available</option>
+                    <option value="maybe">Maybe</option>
+                    <option value="unavailable">Unavailable</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div className="field">
+                  <label>Start time</label>
+                  <input name="recurringStart" className="select-input" defaultValue="09:00" placeholder="HH:MM" />
+                </div>
+                <div className="field">
+                  <label>End time</label>
+                  <input name="recurringEnd" className="select-input" defaultValue="17:00" placeholder="HH:MM" />
+                </div>
+              </div>
+              <button className="btn btn-primary btn-sm" type="submit" style={{ width: "100%", justifyContent: "center" }}>
+                Add recurring
               </button>
             </form>
           </div>
@@ -2373,16 +2620,18 @@ function MembersView({
                 <div className="mc-info">
                   <strong className="mc-name">{member.name}</strong>
                   <span className="mc-handle">@{member.handle}</span>
-                </div>
-                <div className="mc-pills">
-                  {member.globalRoles.map((r) => (
-                    <StatusPill key={r} tone="blue">{r.replace("_", " ")}</StatusPill>
-                  ))}
-                  {member.sections.map((entry) => (
-                    <StatusPill key={`${member.id}-${entry.section}`} tone={entry.role === "lead" ? "green" : "slate"}>
-                      {sectionName(entry.section)}
-                    </StatusPill>
-                  ))}
+                  {(member.globalRoles.length > 0 || member.sections.length > 0) && (
+                    <div className="mc-pills">
+                      {member.globalRoles.map((r) => (
+                        <StatusPill key={r} tone="blue">{r.replace("_", " ")}</StatusPill>
+                      ))}
+                      {member.sections.map((entry) => (
+                        <StatusPill key={`${member.id}-${entry.section}`} tone={entry.role === "lead" ? "green" : "slate"}>
+                          {sectionName(entry.section)}
+                        </StatusPill>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </button>
             ))
@@ -2839,46 +3088,7 @@ function PortfolioView({
 }
 
 function DiscordView() {
-  return (
-    <div className="page col-layout equal">
-      <section className="card">
-        <PanelHeader icon={<Bot size={19} />} title="WTUS Discord bot" />
-        <div className="bot-commands">
-          {[
-            ["/brief", "Show a 60-second assignment summary"],
-            ["/mytasks", "Show member-owned and assigned work"],
-            ["/available", "Mark live event help availability"],
-            ["/eventroles", "Show current live event role and region"],
-            ["/preferences", "Update reminder cadence from Discord"],
-            ["/specials", "Show open special requests"],
-            ["/requesthelp", "DM a member a Yes/No coverage request"],
-          ].map(([command, detail]) => (
-            <div className="command-row" key={command}>
-              <code>{command}</code>
-              <span>{detail}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="card">
-        <PanelHeader icon={<Bell size={19} />} title="Alert channels" />
-        <div className="alert-list">
-          <div>
-            <strong>#ops-dashboard</strong>
-            <span>Task assignment and blocked work</span>
-          </div>
-          <div>
-            <strong>#live-coverage</strong>
-            <span>Availability and event roles</span>
-          </div>
-          <div>
-            <strong>#verification</strong>
-            <span>Reports needing review</span>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
+  return <BotConfigView />;
 }
 
 function AdminView({
@@ -3082,6 +3292,7 @@ export function App() {
   const [invites, setInvites] = useStoredState<OnboardingInvite[]>("wtus.onboardingInvites", []);
   const [tasks, setTasks] = useStoredState<Task[]>("wtus.tasks", initialTasks);
   const [availability, setAvailability] = useStoredState<AvailabilityWindow[]>("wtus.availability", initialAvailability);
+  const [recurringSchedules, setRecurringSchedules] = useStoredState<RecurringSchedule[]>("wtus.recurringSchedules", []);
   const [events, setEvents] = useStoredState<LiveEvent[]>("wtus.liveEvents", initialEvents);
   const [coverage, setCoverage] = useStoredState<TemporaryCoverage[]>("wtus.temporaryCoverage", initialCoverage);
   const [reminderPreferences, setReminderPreferences] = useStoredState<ReminderPreference[]>("wtus.reminderPreferences", initialReminderPreferences);
@@ -3106,6 +3317,7 @@ export function App() {
         setInvites(data.invites);
         setTasks(data.tasks);
         setAvailability(data.availability);
+        setRecurringSchedules(data.recurringSchedules);
         setEvents(data.liveEvents);
         setCoverage(data.coverage);
         setReminderPreferences(data.reminderPreferences ?? []);
@@ -3191,7 +3403,7 @@ export function App() {
     };
 
     if (active === "tasks") return <TasksView tasks={tasks} members={members} setTasks={setTasks} onTaskStatus={updateTaskStatus} />;
-    if (active === "availability") return <AvailabilityView availability={availability} members={members} setAvailability={setAvailability} />;
+    if (active === "availability") return <AvailabilityView availability={availability} members={members} setAvailability={setAvailability} recurringSchedules={recurringSchedules} setRecurringSchedules={setRecurringSchedules} currentUserId={session?.user?.id ?? ""} />;
     if (active === "events") {
       return (
         <EventsView

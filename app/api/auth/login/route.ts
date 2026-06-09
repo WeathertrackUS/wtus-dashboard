@@ -1,0 +1,48 @@
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+function getAppBaseUrl(request: Request) {
+  return (
+    process.env.APP_URL?.trim() ||
+    process.env.NEXTAUTH_URL?.trim() ||
+    new URL(request.url).origin
+  );
+}
+
+function isLocalUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.hostname === "127.0.0.1" || url.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
+
+export async function GET(request: Request) {
+  const appBaseUrl = getAppBaseUrl(request);
+
+  if (isLocalUrl(appBaseUrl)) {
+    return NextResponse.redirect(new URL("/api/auth/signin/discord", appBaseUrl));
+  }
+
+  const authBaseUrl =
+    process.env.WTUS_AUTH_URL?.trim() ||
+    "https://auth.weathertrackus.com";
+
+  const authorizeUrl = new URL("/authorize", authBaseUrl);
+  authorizeUrl.searchParams.set("client_id", "wtus-dashboard");
+  authorizeUrl.searchParams.set(
+    "redirect_uri",
+    new URL("/api/auth/callback/wtus-auth", appBaseUrl).toString(),
+  );
+  authorizeUrl.searchParams.set("response_type", "code");
+  authorizeUrl.searchParams.set("scope", "openid");
+  authorizeUrl.searchParams.set("state", crypto.randomUUID());
+
+  const loginUrl = new URL("/login", authBaseUrl);
+  loginUrl.searchParams.set("returnTo", authorizeUrl.toString());
+
+  return NextResponse.redirect(loginUrl);
+}

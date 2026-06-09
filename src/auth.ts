@@ -3,6 +3,11 @@ import type { Account, NextAuthOptions, Profile, User } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
 import { prisma } from "./db";
 
+const wtusAuthIssuer = process.env.WTUS_AUTH_ISSUER?.trim() || "https://auth.weathertrackus.com";
+const wtusAuthClientSecret =
+  process.env.WTUS_DASHBOARD_OIDC_CLIENT_SECRET?.trim() ||
+  process.env.AUTH_SECRET?.trim() ||
+  "";
 const discordGuildId = process.env.DISCORD_GUILD_ID;
 
 type DiscordGuild = {
@@ -72,12 +77,43 @@ export const authOptions: NextAuthOptions = {
     DiscordProvider({
       clientId: process.env.DISCORD_CLIENT_ID ?? "",
       clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "",
+      authorization: "https://discord.com/api/oauth2/authorize?scope=identify+email+guilds",
+    }),
+    {
+      id: "wtus-auth",
+      name: "WTUS Auth",
+      type: "oauth",
+      issuer: wtusAuthIssuer,
+      clientId: "wtus-dashboard",
+      clientSecret: wtusAuthClientSecret,
       authorization: {
         params: {
-          scope: "identify email guilds",
+          scope: "openid profile email",
         },
       },
-    }),
+      checks: [],
+      idToken: true,
+      profile(profile) {
+        const typedProfile = profile as {
+          sub?: string;
+          name?: string;
+          preferred_username?: string;
+          email?: string;
+          picture?: string;
+        };
+
+        return {
+          id: typedProfile.sub ?? typedProfile.email ?? "wtus-auth-user",
+          name:
+            typedProfile.name ??
+            typedProfile.preferred_username ??
+            typedProfile.email ??
+            "WTUS Member",
+          email: typedProfile.email ?? null,
+          image: typedProfile.picture ?? null,
+        };
+      },
+    },
   ],
   callbacks: {
     async signIn({ account, profile, user }) {

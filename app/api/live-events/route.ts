@@ -18,14 +18,12 @@ export async function POST(request: Request) {
     description?: string;
     startsAt?: string;
     briefing?: string;
-    roleName?: string;
   } | null;
 
   const name = body?.name?.trim();
-  const roleName = body?.roleName?.trim();
 
-  if (!name || !roleName) {
-    return NextResponse.json({ error: "Event name and first role are required" }, { status: 400 });
+  if (!name) {
+    return NextResponse.json({ error: "Event name is required" }, { status: 400 });
   }
 
   const liveEvent = await prisma.liveEvent.create({
@@ -36,12 +34,6 @@ export async function POST(request: Request) {
       startsAt: parseDate(body?.startsAt),
       briefing: body?.briefing?.trim() || null,
       createdById: access.access.userId,
-      roles: {
-        create: {
-          name: roleName,
-          description: "Custom event role",
-        },
-      },
     },
     include: { roles: true, assignments: true },
   });
@@ -54,6 +46,7 @@ export async function POST(request: Request) {
     startsAt: liveEvent.startsAt.toISOString(),
     endsAt: liveEvent.endsAt?.toISOString(),
     briefing: liveEvent.briefing ?? "",
+    updates: [],
     roles: liveEvent.roles.map((role) => ({
       id: role.id,
       name: role.name,

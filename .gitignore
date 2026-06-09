@@ -36,3 +36,7 @@ Thumbs.db
 .vscode/
 .idea/
 .gstack/
+
+design-export/*
+deploy.tar
+deploy4.tar.gz

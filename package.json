@@ -10,7 +10,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "admin:grant-role": "tsx scripts/grant-role.ts",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && next build && node scripts/sync-standalone-assets.mjs",
     "bot:invite": "tsx bot/index.ts --invite-url",
     "bot:register": "tsx bot/index.ts --register-only",
     "bot:start": "tsx bot/index.ts",

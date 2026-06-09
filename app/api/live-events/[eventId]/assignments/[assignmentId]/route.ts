@@ -36,14 +36,12 @@ export async function PATCH(
   const assignment = await prisma.liveEventAssignment.update({
     where: { id: assignmentId },
     data: { status },
-    include: { section: true },
   });
 
   const result: LiveEventAssignment = {
     id: assignment.id,
     memberId: assignment.userId,
     roleId: assignment.liveEventRoleId,
-    section: assignment.section?.key,
     region: assignment.region ?? undefined,
     platform: assignment.platform ?? undefined,
     status: assignment.status,

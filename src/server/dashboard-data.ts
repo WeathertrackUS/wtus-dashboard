@@ -1,8 +1,21 @@
 import { prisma } from "../db";
-import type { AvailabilityWindow, LiveEvent, Member, OnboardingInvite, SectionKey, Task, TemporaryCoverage } from "../types";
+import { fetchLeantimeTasks } from "./leantime";
+import type {
+  AvailabilityWindow,
+  LiveEvent,
+  Member,
+  OnboardingInvite,
+  RecurringSchedule,
+  ReminderPreference,
+  SectionKey,
+  SpecialRequest,
+  Task,
+  TemporaryCoverage,
+  WorkSubmission,
+} from "../types";
 
 export async function getDashboardData() {
-  const [members, tasks, availability, liveEvents, coverage, invites] = await Promise.all([
+  const [members, taskResult, availability, recurringSchedules, liveEvents, coverage, invites, reminderPreferences, workSubmissions, specialRequests] = await Promise.all([
     prisma.user.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -10,19 +23,15 @@ export async function getDashboardData() {
         sectionMemberships: { include: { section: true } },
       },
     }),
-    prisma.task.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        section: true,
-        comments: {
-          orderBy: { createdAt: "desc" },
-          include: { user: true },
-        },
-      },
-    }),
+    fetchLeantimeTasks({ limit: 50 }),
     prisma.availabilityWindow.findMany({
+      where: { endsAt: { gt: new Date() } },
       orderBy: { startsAt: "asc" },
       include: { section: true },
+    }),
+    prisma.recurringAvailability.findMany({
+      where: { isActive: true },
+      orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
     }),
     prisma.liveEvent.findMany({
       orderBy: { startsAt: "desc" },
@@ -37,6 +46,17 @@ export async function getDashboardData() {
     }),
     prisma.onboardingInvite.findMany({
       orderBy: { createdAt: "desc" },
+    }),
+    prisma.reminderPreference.findMany({
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.workSubmission.findMany({
+      orderBy: [{ workDate: "desc" }, { createdAt: "desc" }],
+      take: 100,
+    }),
+    prisma.specialRequest.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
     }),
   ]);
 
@@ -53,35 +73,25 @@ export async function getDashboardData() {
         role: membership.role,
       })),
     })),
-    tasks: tasks.map<Task>((task) => ({
-      id: task.id,
-      title: task.title,
-      section: task.section?.key ?? "development",
-      status: task.status,
-      priority: task.priority,
-      assigneeId: task.assigneeId ?? "",
-      ownerId: task.createdById ?? task.assigneeId ?? "",
-      due: task.dueAt ? task.dueAt.toLocaleDateString() : "",
-      notes: task.description ?? "",
-      comments: task.comments.map((comment) => ({
-        id: comment.id,
-        taskId: comment.taskId,
-        userId: comment.userId ?? undefined,
-        authorName: comment.user?.name ?? comment.user?.discordHandle ?? undefined,
-        body: comment.body,
-        createdAt: comment.createdAt.toLocaleString(),
-      })),
-    })),
+    tasks: taskResult.configured ? taskResult.tasks : [],
     availability: availability.map<AvailabilityWindow>((window) => ({
       id: window.id,
       memberId: window.userId,
       status: window.status,
-      section: window.section?.key,
       helpRole: window.helpRole,
-      eventName: window.eventName ?? undefined,
       startsAt: window.startsAt.toISOString(),
       endsAt: window.endsAt.toISOString(),
       notes: window.notes ?? "",
+    })),
+    recurringSchedules: recurringSchedules.map<RecurringSchedule>((s) => ({
+      id: s.id,
+      userId: s.userId,
+      dayOfWeek: s.dayOfWeek,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      status: s.status,
+      notes: s.notes ?? "",
+      isActive: s.isActive,
     })),
     liveEvents: liveEvents.map<LiveEvent>((event) => ({
       id: event.id,
@@ -91,6 +101,7 @@ export async function getDashboardData() {
       startsAt: event.startsAt.toISOString(),
       endsAt: event.endsAt?.toISOString(),
       briefing: event.briefing ?? "",
+      updates: [],
       roles: event.roles.map((role) => ({
         id: role.id,
         name: role.name,
@@ -100,7 +111,6 @@ export async function getDashboardData() {
         id: assignment.id,
         memberId: assignment.userId,
         roleId: assignment.liveEventRoleId,
-        section: assignment.section?.key,
         region: assignment.region ?? undefined,
         platform: assignment.platform ?? undefined,
         status: assignment.status,
@@ -128,6 +138,46 @@ export async function getDashboardData() {
       createdAt: invite.createdAt.toLocaleString(),
       status: invite.status,
       memberId: invite.usedByUserId ?? undefined,
+    })),
+    reminderPreferences: reminderPreferences.map<ReminderPreference>((preference) => ({
+      id: preference.id,
+      memberId: preference.userId,
+      frequency: preference.frequency,
+      sendClearForDay: preference.sendClearForDay,
+      taskReminders: preference.taskReminders,
+      liveEventReminders: preference.liveEventReminders,
+      specialRequestReminders: preference.specialRequestReminders,
+      preferredDays: preference.preferredDays,
+      preferredTimes: preference.preferredTimes,
+      preferredPlatforms: preference.preferredPlatforms,
+      preferredContentTypes: preference.preferredContentTypes,
+      notes: preference.notes ?? "",
+    })),
+    workSubmissions: workSubmissions.map<WorkSubmission>((submission) => ({
+      id: submission.id,
+      memberId: submission.userId,
+      title: submission.title,
+      workDate: submission.workDate.toISOString().slice(0, 10),
+      platform: submission.platform,
+      contentType: submission.contentType,
+      memberRole: submission.memberRole,
+      description: submission.description,
+      assetUrl: submission.assetUrl ?? "",
+      skills: submission.skills,
+      notable: submission.notable,
+    })),
+    specialRequests: specialRequests.map<SpecialRequest>((request) => ({
+      id: request.id,
+      memberId: request.targetUserId,
+      createdById: request.createdById ?? undefined,
+      title: request.title,
+      prompt: request.prompt,
+      role: request.role,
+      platform: request.platform ?? undefined,
+      dueAt: request.dueAt?.toISOString(),
+      status: request.status,
+      responseNote: request.responseNote ?? "",
+      createdAt: request.createdAt.toLocaleString(),
     })),
   };
 }

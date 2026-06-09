@@ -2,8 +2,21 @@ import { NextResponse } from "next/server";
 import { prisma } from "../../../../src/db";
 import { isGlobalOperator, requireCurrentUser } from "../../../../src/server/permissions";
 import type { Member, SectionKey } from "../../../../src/types";
+import type { GlobalRoleKey } from "../../../../src/generated/prisma/enums";
 
 const sectionKeys: SectionKey[] = ["finance", "forecasting", "nowcasting", "youtube", "graphics", "facebook", "development", "verification"];
+
+const botSyncPort = process.env.DISCORD_BOT_SYNC_PORT ?? "3001";
+const botSyncSecret = process.env.DISCORD_BOT_SYNC_SECRET;
+
+function triggerDiscordSync(userId: string) {
+  if (!botSyncSecret) return;
+  fetch(`http://127.0.0.1:${botSyncPort}/sync-user`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, secret: botSyncSecret }),
+  }).catch(() => {});
+}
 
 function toMember(user: {
   id: string;
@@ -43,6 +56,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ membe
     name?: string;
     handle?: string;
     discordUserId?: string;
+    section?: string;
+    sectionRole?: string | null;
+    globalRole?: string;
     sections?: unknown;
   } | null;
 
@@ -63,20 +79,44 @@ export async function PATCH(request: Request, context: { params: Promise<{ membe
       },
     });
 
-    const sections = await tx.section.findMany({ where: { key: { in: selectedSections } } });
-    await tx.sectionMembership.deleteMany({
-      where: {
-        userId: memberId,
-        role: "member",
-      },
-    });
+    if (body?.globalRole !== undefined) {
+      const globalRole = await tx.globalRole.findUnique({ where: { key: body.globalRole as GlobalRoleKey } });
+      if (globalRole) {
+        await tx.userGlobalRole.upsert({
+          where: { userId_roleId: { userId: memberId, roleId: globalRole.id } },
+          update: {},
+          create: { userId: memberId, roleId: globalRole.id },
+        });
+      }
+    }
 
-    for (const section of sections) {
-      await tx.sectionMembership.upsert({
-        where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
-        update: {},
-        create: { userId: memberId, sectionId: section.id, role: "member" },
+    if (body?.section !== undefined && body?.sectionRole !== undefined) {
+      const section = await tx.section.findUnique({ where: { key: body.section as SectionKey } });
+      if (section) {
+        if (body.sectionRole === null || body.sectionRole === "remove") {
+          await tx.sectionMembership.deleteMany({
+            where: { userId: memberId, sectionId: section.id },
+          });
+        } else {
+          await tx.sectionMembership.upsert({
+            where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
+            update: { role: body.sectionRole as "lead" | "member" },
+            create: { userId: memberId, sectionId: section.id, role: body.sectionRole as "lead" | "member" },
+          });
+        }
+      }
+    } else if (body?.sections !== undefined) {
+      const sectionsForMembership = await tx.section.findMany({ where: { key: { in: selectedSections } } });
+      await tx.sectionMembership.deleteMany({
+        where: { userId: memberId },
       });
+      for (const section of sectionsForMembership) {
+        await tx.sectionMembership.upsert({
+          where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
+          update: {},
+          create: { userId: memberId, sectionId: section.id, role: "member" },
+        });
+      }
     }
 
     return tx.user.findUniqueOrThrow({
@@ -87,6 +127,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ membe
       },
     });
   });
+
+  const hadRoleChange = body?.globalRole !== undefined || body?.section !== undefined || body?.sections !== undefined;
+  if (hadRoleChange) triggerDiscordSync(memberId);
 
   return NextResponse.json({ member: toMember(result) });
 }
