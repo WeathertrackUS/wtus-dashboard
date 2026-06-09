@@ -53,10 +53,20 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
   }
 
-  const appBaseUrl =
-    process.env.APP_URL?.trim() ||
-    process.env.NEXTAUTH_URL?.trim() ||
-    "https://team.weathertrackus.com";
+  const requestOrigin = url.origin;
+  const configuredAppUrl = process.env.APP_URL?.trim() || process.env.NEXTAUTH_URL?.trim() || "";
+  const appBaseUrl = (() => {
+    if (!configuredAppUrl) return requestOrigin;
+    try {
+      const configured = new URL(configuredAppUrl);
+      if (configured.hostname === "localhost" || configured.hostname === "127.0.0.1") {
+        return requestOrigin;
+      }
+    } catch {
+      return requestOrigin;
+    }
+    return configuredAppUrl;
+  })();
   const authBaseUrl =
     process.env.WTUS_AUTH_URL?.trim() ||
     "https://auth.weathertrackus.com";

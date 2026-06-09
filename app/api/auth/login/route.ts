@@ -4,11 +4,21 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function getAppBaseUrl(request: Request) {
-  return (
-    process.env.APP_URL?.trim() ||
-    process.env.NEXTAUTH_URL?.trim() ||
-    new URL(request.url).origin
-  );
+  const requestOrigin = new URL(request.url).origin;
+  const configuredUrl = process.env.APP_URL?.trim() || process.env.NEXTAUTH_URL?.trim() || "";
+
+  if (!configuredUrl) return requestOrigin;
+
+  try {
+    const configured = new URL(configuredUrl);
+    if (configured.hostname === "localhost" || configured.hostname === "127.0.0.1") {
+      return requestOrigin;
+    }
+  } catch {
+    return requestOrigin;
+  }
+
+  return configuredUrl;
 }
 
 function isLocalUrl(value: string) {
