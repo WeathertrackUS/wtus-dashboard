@@ -33,8 +33,8 @@ function isLocalUrl(value: string) {
 export async function GET(request: Request) {
   const appBaseUrl = getAppBaseUrl(request);
 
-  if (isLocalUrl(appBaseUrl)) {
-    return NextResponse.redirect(new URL("/api/auth/signin/discord", appBaseUrl));
+  if (process.env.NODE_ENV === "production" && isLocalUrl(appBaseUrl)) {
+    return NextResponse.redirect(new URL("/?error=AuthOrigin", appBaseUrl));
   }
 
   const authBaseUrl =

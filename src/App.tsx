@@ -535,6 +535,8 @@ function ProductionAuthGate({
   const errorMessage =
     errorCode === "OAuthCallback" || errorCode === "OAuthSignin"
       ? "Sign-in failed while creating or loading your session. Check the dashboard and database service on the VPS, then try again."
+      : errorCode === "AuthOrigin"
+        ? "The production dashboard is still configured with a localhost auth origin. Update APP_URL and NEXTAUTH_URL on the VPS to the public HTTPS site, then restart the dashboard."
       : errorCode === "AccessDenied"
         ? "Access was denied by the provider."
         : errorCode
