@@ -71,89 +71,93 @@ export async function GET(request: Request) {
     process.env.WTUS_AUTH_URL?.trim() ||
     "https://auth.weathertrackus.com";
 
-  const tokenResponse = await fetch(new URL("/token", authBaseUrl), {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      client_id: "wtus-dashboard",
-      client_secret:
-        process.env.WTUS_DASHBOARD_OIDC_CLIENT_SECRET?.trim() ||
-        process.env.AUTH_SECRET?.trim() ||
-        "",
-      redirect_uri: new URL("/api/auth/callback/wtus-auth", appBaseUrl).toString(),
-    }),
-  });
+  try {
+    const tokenResponse = await fetch(new URL("/token", authBaseUrl), {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        client_id: "wtus-dashboard",
+        client_secret:
+          process.env.WTUS_DASHBOARD_OIDC_CLIENT_SECRET?.trim() ||
+          process.env.AUTH_SECRET?.trim() ||
+          "",
+        redirect_uri: new URL("/api/auth/callback/wtus-auth", appBaseUrl).toString(),
+      }),
+    });
 
-  if (!tokenResponse.ok) {
-    return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
-  }
+    if (!tokenResponse.ok) {
+      return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
+    }
 
-  const tokens = (await tokenResponse.json()) as TokenResponse;
-  const claims =
-    (tokens.id_token && decodeJwtPayload(tokens.id_token)) ||
-    (tokens.access_token && decodeJwtPayload(tokens.access_token)) ||
-    null;
+    const tokens = (await tokenResponse.json()) as TokenResponse;
+    const claims =
+      (tokens.id_token && decodeJwtPayload(tokens.id_token)) ||
+      (tokens.access_token && decodeJwtPayload(tokens.access_token)) ||
+      null;
 
-  if (!claims?.sub) {
-    return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
-  }
+    if (!claims?.sub) {
+      return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
+    }
 
-  const user = await prisma.user.upsert({
-    where: {
-      discordUserId: claims.discord_user_id || claims.sub,
-    },
-    update: {
-      email: claims.email ?? null,
-      name: claims.name ?? claims.preferred_username ?? claims.email ?? null,
-      discordUserId: claims.discord_user_id || claims.sub,
-      discordHandle: claims.preferred_username ?? null,
-      discordServerVerified: true,
-      status: "active",
-      onboardingStatus: "verified",
-    },
-    create: {
-      email: claims.email ?? null,
-      name: claims.name ?? claims.preferred_username ?? claims.email ?? null,
-      discordUserId: claims.discord_user_id || claims.sub,
-      discordHandle: claims.preferred_username ?? null,
-      discordServerVerified: true,
-      status: "active",
-      onboardingStatus: "verified",
-    },
-  });
+    const user = await prisma.user.upsert({
+      where: {
+        discordUserId: claims.discord_user_id || claims.sub,
+      },
+      update: {
+        email: claims.email ?? null,
+        name: claims.name ?? claims.preferred_username ?? claims.email ?? null,
+        discordUserId: claims.discord_user_id || claims.sub,
+        discordHandle: claims.preferred_username ?? null,
+        discordServerVerified: true,
+        status: "active",
+        onboardingStatus: "verified",
+      },
+      create: {
+        email: claims.email ?? null,
+        name: claims.name ?? claims.preferred_username ?? claims.email ?? null,
+        discordUserId: claims.discord_user_id || claims.sub,
+        discordHandle: claims.preferred_username ?? null,
+        discordServerVerified: true,
+        status: "active",
+        onboardingStatus: "verified",
+      },
+    });
 
-  const sessionToken = randomBytes(32).toString("hex");
-  await prisma.session.create({
-    data: {
-      sessionToken,
-      userId: user.id,
-      expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    },
-  });
+    const sessionToken = randomBytes(32).toString("hex");
+    await prisma.session.create({
+      data: {
+        sessionToken,
+        userId: user.id,
+        expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
 
-  const useSecureCookie = isHttpsUrl(appBaseUrl);
-  const response = NextResponse.redirect(new URL(callbackUrl, appBaseUrl));
-  response.cookies.set(buildSessionCookieName(appBaseUrl), sessionToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: useSecureCookie,
-    path: "/",
-  });
-  response.cookies.set("next-auth.session-token", sessionToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: useSecureCookie,
-    path: "/",
-  });
-  if (useSecureCookie) {
-    response.cookies.set("__Secure-next-auth.session-token", sessionToken, {
+    const useSecureCookie = isHttpsUrl(appBaseUrl);
+    const response = NextResponse.redirect(new URL(callbackUrl, appBaseUrl));
+    response.cookies.set(buildSessionCookieName(appBaseUrl), sessionToken, {
       httpOnly: true,
       sameSite: "lax",
-      secure: true,
+      secure: useSecureCookie,
       path: "/",
     });
+    response.cookies.set("next-auth.session-token", sessionToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: useSecureCookie,
+      path: "/",
+    });
+    if (useSecureCookie) {
+      response.cookies.set("__Secure-next-auth.session-token", sessionToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: true,
+        path: "/",
+      });
+    }
+    return response;
+  } catch {
+    return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
   }
-  return response;
 }
