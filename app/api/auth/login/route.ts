@@ -4,7 +4,11 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function getAppBaseUrl(request: Request) {
-  const requestOrigin = new URL(request.url).origin;
+  const headers = request.headers;
+  const forwardedHost = headers.get("x-forwarded-host")?.split(",")[0]?.trim() || headers.get("host")?.trim() || "";
+  const forwardedProto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "";
+  const requestOrigin =
+    forwardedHost && forwardedProto ? `${forwardedProto}://${forwardedHost}` : new URL(request.url).origin;
   const configuredUrl = process.env.APP_URL?.trim() || process.env.NEXTAUTH_URL?.trim() || "";
 
   if (!configuredUrl) return requestOrigin;

@@ -53,7 +53,11 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
   }
 
-  const requestOrigin = url.origin;
+  const headers = request.headers;
+  const forwardedHost = headers.get("x-forwarded-host")?.split(",")[0]?.trim() || headers.get("host")?.trim() || "";
+  const forwardedProto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "";
+  const requestOrigin =
+    forwardedHost && forwardedProto ? `${forwardedProto}://${forwardedHost}` : url.origin;
   const configuredAppUrl = process.env.APP_URL?.trim() || process.env.NEXTAUTH_URL?.trim() || "";
   const appBaseUrl = (() => {
     if (!configuredAppUrl) return requestOrigin;
