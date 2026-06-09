@@ -60,6 +60,7 @@ jobs:
           ssh wtus-vps <<'EOF'
           set -euo pipefail
           cd /opt/wtus-dashboard
+          export CI=true
 
           pnpm install --frozen-lockfile
           pnpm db:deploy

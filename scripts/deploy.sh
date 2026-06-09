@@ -17,7 +17,7 @@ scp -r prisma/ "$VPS:$APP/"
 scp package.json pnpm-lock.yaml next.config.mjs "$VPS:$APP/" 2>/dev/null || true
 
 echo "→ Building on VPS (generates Linux Prisma binaries)..."
-ssh "$VPS" "cd $APP && pnpm install --frozen-lockfile && pnpm build"
+ssh "$VPS" "cd $APP && CI=true pnpm install --frozen-lockfile && pnpm build"
 
 echo "→ Copying static assets into standalone..."
 ssh "$VPS" "
