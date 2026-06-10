@@ -71,6 +71,10 @@ const isLocalPreviewEnabled = process.env.NEXT_PUBLIC_ENABLE_LOCAL_PREVIEW === "
 // Bump this version whenever the shape of cached data changes so stale localStorage is discarded.
 const CACHE_VERSION = "v3";
 const leantimeUrl = "https://tasks.weathertrackus.com";
+function getReturnOrigin() {
+  if (typeof window === "undefined") return "https://team.weathertrackus.com";
+  return window.location.origin;
+}
 const startDiscordLogin = () => {
   if (typeof window === "undefined") return;
   if (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost") {
@@ -507,7 +511,11 @@ function AppShell({
               ))}
             </div>
           ) : null}
-          <button className="sidebar-user" type="button" onClick={() => (isSignedIn ? signOut() : startDiscordLogin())}>
+          <button
+            className="sidebar-user"
+            type="button"
+            onClick={() => (isSignedIn ? signOut({ callbackUrl: getReturnOrigin() }) : startDiscordLogin())}
+          >
             <div className="avatar">{(session?.user?.name ?? "WT").slice(0, 2).toUpperCase()}</div>
             <div className="user-info"><strong>{isSignedIn ? session.user?.name ?? "WTUS" : "Discord"}</strong><span>{roleLabel(role).toUpperCase()}</span></div>
             {isSignedIn ? <LogOut size={14} /> : <ChevronUp size={14} />}
@@ -564,11 +572,11 @@ function ProductionAuthGate({
           </p>
           {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
         </div>
-        {isUnverified ? (
-          <button className="btn btn-secondary" type="button" onClick={() => signOut()}>
-            <LogOut size={16} />
-            Sign out
-          </button>
+          {isUnverified ? (
+            <button className="btn btn-secondary" type="button" onClick={() => signOut({ callbackUrl: getReturnOrigin() })}>
+              <LogOut size={16} />
+              Sign out
+            </button>
         ) : (
           <button className="btn btn-primary" type="button" disabled={isLoading} onClick={startDiscordLogin}>
             <LogIn size={16} />
