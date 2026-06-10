@@ -44,6 +44,20 @@ function buildSessionCookieName(appBaseUrl: string) {
     : "next-auth.session-token";
 }
 
+function sanitizeCallbackUrl(callbackUrl: string, appBaseUrl: string) {
+  try {
+    const appOrigin = new URL(appBaseUrl).origin;
+    const resolved = new URL(callbackUrl, appBaseUrl);
+
+    if (resolved.origin !== appOrigin) return appBaseUrl;
+    if (resolved.hostname === "localhost" || resolved.hostname === "127.0.0.1") return appBaseUrl;
+
+    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  } catch {
+    return appBaseUrl;
+  }
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code")?.trim() || "";
@@ -139,7 +153,8 @@ export async function GET(request: Request) {
     });
 
     const useSecureCookie = isHttpsUrl(appBaseUrl);
-    const response = NextResponse.redirect(new URL(callbackUrl, appBaseUrl));
+    const safeCallbackUrl = sanitizeCallbackUrl(callbackUrl, appBaseUrl);
+    const response = NextResponse.redirect(new URL(safeCallbackUrl, appBaseUrl));
     response.cookies.set(buildSessionCookieName(appBaseUrl), sessionToken, {
       httpOnly: true,
       sameSite: "lax",
