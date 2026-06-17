@@ -43,6 +43,8 @@ function toMember(user: {
   };
 }
 
+const OPERATOR_ONLY_FIELDS = ["globalRole", "section", "sectionRole", "sections", "discordUserId"] as const;
+
 export async function PATCH(request: Request, context: { params: Promise<{ memberId: string }> }) {
   const access = await requireCurrentUser();
   if ("response" in access) return access.response;
@@ -62,9 +64,22 @@ export async function PATCH(request: Request, context: { params: Promise<{ membe
     sections?: unknown;
   } | null;
 
+  const isOperator = isGlobalOperator(access.access);
+
+  if (!isOperator) {
+    const attemptedPrivilegedFields = OPERATOR_ONLY_FIELDS.filter(
+      (field) => body != null && field in body && (body as Record<string, unknown>)[field] !== undefined,
+    );
+    if (attemptedPrivilegedFields.length > 0) {
+      return NextResponse.json(
+        { error: `Not authorized to modify: ${attemptedPrivilegedFields.join(", ")}` },
+        { status: 403 },
+      );
+    }
+  }
+
   const name = body?.name?.trim();
   const handle = body?.handle?.trim().replace(/^@/, "");
-  const discordUserId = body?.discordUserId?.trim();
   const selectedSections = Array.isArray(body?.sections)
     ? body.sections.filter((section): section is SectionKey => typeof section === "string" && sectionKeys.includes(section as SectionKey))
     : [];
@@ -75,47 +90,55 @@ export async function PATCH(request: Request, context: { params: Promise<{ membe
       data: {
         name: name || undefined,
         handle: handle || undefined,
-        discordUserId: discordUserId || null,
       },
     });
 
-    if (body?.globalRole !== undefined) {
-      const globalRole = await tx.globalRole.findUnique({ where: { key: body.globalRole as GlobalRoleKey } });
-      if (globalRole) {
-        await tx.userGlobalRole.upsert({
-          where: { userId_roleId: { userId: memberId, roleId: globalRole.id } },
-          update: {},
-          create: { userId: memberId, roleId: globalRole.id },
+    if (isOperator) {
+      if (body?.discordUserId !== undefined) {
+        await tx.user.update({
+          where: { id: memberId },
+          data: { discordUserId: body.discordUserId?.trim() || null },
         });
       }
-    }
 
-    if (body?.section !== undefined && body?.sectionRole !== undefined) {
-      const section = await tx.section.findUnique({ where: { key: body.section as SectionKey } });
-      if (section) {
-        if (body.sectionRole === null || body.sectionRole === "remove") {
-          await tx.sectionMembership.deleteMany({
-            where: { userId: memberId, sectionId: section.id },
-          });
-        } else {
-          await tx.sectionMembership.upsert({
-            where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
-            update: { role: body.sectionRole as "lead" | "member" },
-            create: { userId: memberId, sectionId: section.id, role: body.sectionRole as "lead" | "member" },
+      if (body?.globalRole !== undefined) {
+        const globalRole = await tx.globalRole.findUnique({ where: { key: body.globalRole as GlobalRoleKey } });
+        if (globalRole) {
+          await tx.userGlobalRole.upsert({
+            where: { userId_roleId: { userId: memberId, roleId: globalRole.id } },
+            update: {},
+            create: { userId: memberId, roleId: globalRole.id },
           });
         }
       }
-    } else if (body?.sections !== undefined) {
-      const sectionsForMembership = await tx.section.findMany({ where: { key: { in: selectedSections } } });
-      await tx.sectionMembership.deleteMany({
-        where: { userId: memberId },
-      });
-      for (const section of sectionsForMembership) {
-        await tx.sectionMembership.upsert({
-          where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
-          update: {},
-          create: { userId: memberId, sectionId: section.id, role: "member" },
+
+      if (body?.section !== undefined && body?.sectionRole !== undefined) {
+        const section = await tx.section.findUnique({ where: { key: body.section as SectionKey } });
+        if (section) {
+          if (body.sectionRole === null || body.sectionRole === "remove") {
+            await tx.sectionMembership.deleteMany({
+              where: { userId: memberId, sectionId: section.id },
+            });
+          } else {
+            await tx.sectionMembership.upsert({
+              where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
+              update: { role: body.sectionRole as "lead" | "member" },
+              create: { userId: memberId, sectionId: section.id, role: body.sectionRole as "lead" | "member" },
+            });
+          }
+        }
+      } else if (body?.sections !== undefined) {
+        const sectionsForMembership = await tx.section.findMany({ where: { key: { in: selectedSections } } });
+        await tx.sectionMembership.deleteMany({
+          where: { userId: memberId },
         });
+        for (const section of sectionsForMembership) {
+          await tx.sectionMembership.upsert({
+            where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
+            update: {},
+            create: { userId: memberId, sectionId: section.id, role: "member" },
+          });
+        }
       }
     }
 
@@ -128,7 +151,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ membe
     });
   });
 
-  const hadRoleChange = body?.globalRole !== undefined || body?.section !== undefined || body?.sections !== undefined;
+  const hadRoleChange = isOperator && (body?.globalRole !== undefined || body?.section !== undefined || body?.sections !== undefined);
   if (hadRoleChange) triggerDiscordSync(memberId);
 
   return NextResponse.json({ member: toMember(result) });
