@@ -2403,45 +2403,41 @@ function OnboardingPage({
 function AccountView({
   members,
   setMembers,
+  role,
 }: {
   members: Member[];
   setMembers: React.Dispatch<React.SetStateAction<Member[]>>;
+  role: RoleView;
 }) {
   const [memberId, setMemberId] = useState(members[0]?.id ?? "");
   const activeMember = members.find((member) => member.id === memberId) ?? members[0];
+  const isOperator = canManageTeam(role);
 
   async function saveAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeMember) return;
     const form = new FormData(event.currentTarget);
-    const selectedSections = form.getAll("sections") as SectionKey[];
-    const fallbackMember: Member = {
-      ...activeMember,
+    const payload: Record<string, unknown> = {
       name: String(form.get("name")),
       handle: String(form.get("handle")).replace(/^@/, ""),
-      discordUserId: String(form.get("discordUserId")),
-      sections: selectedSections.map((section) => ({ section, role: "member" })),
     };
-    let updatedMember = fallbackMember;
+    if (isOperator) {
+      payload.discordUserId = String(form.get("discordUserId"));
+      const selectedSections = form.getAll("sections") as SectionKey[];
+      payload.sections = selectedSections;
+    }
     try {
       const response = await fetch(`/api/members/${activeMember.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: fallbackMember.name,
-          handle: fallbackMember.handle,
-          discordUserId: fallbackMember.discordUserId,
-          sections: selectedSections,
-        }),
+        body: JSON.stringify(payload),
       });
-      if (response.ok) {
-        const data = (await response.json()) as { member: Member };
-        updatedMember = data.member;
-      }
+      if (!response.ok) return;
+      const data = (await response.json()) as { member: Member };
+      setMembers((current) =>
+        current.map((member) => (member.id === activeMember.id ? data.member : member)),
+      );
     } catch {}
-    setMembers((current) =>
-      current.map((member) => (member.id === activeMember.id ? updatedMember : member)),
-    );
   }
 
   return (
@@ -2468,24 +2464,28 @@ function AccountView({
               Discord handle
               <input name="handle" defaultValue={activeMember.handle} />
             </label>
-            <label>
-              Discord user ID
-              <input name="discordUserId" defaultValue={activeMember.discordUserId ?? ""} />
-            </label>
-            <fieldset className="section-picker">
-              <legend>Teams</legend>
-              {sections.map((section) => (
-                <label key={section.key}>
-                  <input
-                    defaultChecked={activeMember.sections.some((entry) => entry.section === section.key)}
-                    name="sections"
-                    type="checkbox"
-                    value={section.key}
-                  />
-                  <span>{section.name}</span>
+            {isOperator && (
+              <>
+                <label>
+                  Discord user ID
+                  <input name="discordUserId" defaultValue={activeMember.discordUserId ?? ""} />
                 </label>
-              ))}
-            </fieldset>
+                <fieldset className="section-picker">
+                  <legend>Teams</legend>
+                  {sections.map((section) => (
+                    <label key={section.key}>
+                      <input
+                        defaultChecked={activeMember.sections.some((entry) => entry.section === section.key)}
+                        name="sections"
+                        type="checkbox"
+                        value={section.key}
+                      />
+                      <span>{section.name}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              </>
+            )}
             <button className="btn btn-primary" type="submit">
               Save account
             </button>
@@ -3438,7 +3438,7 @@ export function App() {
     if (active === "members") return <MembersView members={members} invites={invites} role={effectiveRole} setActive={setActive} setMembers={setMembers} coverage={coverage} setCoverage={setCoverage} events={events} />;
     if (active === "sections") return <SectionsView tasks={tasks} members={members} />;
     if (active === "portfolio") return <PortfolioView members={members} tasks={tasks} />;
-    if (active === "account") return <AccountView members={members} setMembers={setMembers} />;
+    if (active === "account") return <AccountView members={members} setMembers={setMembers} role={effectiveRole} />;
     if (active === "discord" && canManageTeam(effectiveRole)) return <DiscordView />;
     if (active === "admin" && canManageTeam(effectiveRole)) {
       return (
