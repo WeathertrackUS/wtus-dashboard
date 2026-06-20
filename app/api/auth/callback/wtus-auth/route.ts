@@ -1,6 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../../src/db";
+import {
+  getAppBaseUrl,
+  getAuthSecret,
+  sanitizeRedirectPath,
+  verifyOAuthState,
+} from "../../../../../src/server/safe-redirect";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -44,47 +50,34 @@ function buildSessionCookieName(appBaseUrl: string) {
     : "next-auth.session-token";
 }
 
-function sanitizeCallbackUrl(callbackUrl: string, appBaseUrl: string) {
-  try {
-    const appOrigin = new URL(appBaseUrl).origin;
-    const resolved = new URL(callbackUrl, appBaseUrl);
-
-    if (resolved.origin !== appOrigin) return appBaseUrl;
-    if (resolved.hostname === "localhost" || resolved.hostname === "127.0.0.1") return appBaseUrl;
-
-    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
-  } catch {
-    return appBaseUrl;
-  }
+function oauthErrorRedirect(requestUrl: URL, appBaseUrl: string) {
+  return NextResponse.redirect(new URL("/?error=OAuthCallback", appBaseUrl || requestUrl.origin));
 }
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code")?.trim() || "";
-  const callbackUrl = url.searchParams.get("callbackUrl")?.trim() || "/";
+  const state = url.searchParams.get("state")?.trim() || "";
+  const appBaseUrl = getAppBaseUrl(request);
+  const authSecret = getAuthSecret();
 
-  if (!code) {
-    return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
+  if (!code || !state || !authSecret) {
+    return oauthErrorRedirect(url, appBaseUrl);
   }
 
-  const headers = request.headers;
-  const forwardedHost = headers.get("x-forwarded-host")?.split(",")[0]?.trim() || headers.get("host")?.trim() || "";
-  const forwardedProto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "";
-  const requestOrigin =
-    forwardedHost && forwardedProto ? `${forwardedProto}://${forwardedHost}` : url.origin;
-  const configuredAppUrl = process.env.APP_URL?.trim() || process.env.NEXTAUTH_URL?.trim() || "";
-  const appBaseUrl = (() => {
-    if (!configuredAppUrl) return requestOrigin;
-    try {
-      const configured = new URL(configuredAppUrl);
-      if (configured.hostname === "localhost" || configured.hostname === "127.0.0.1") {
-        return requestOrigin;
-      }
-    } catch {
-      return requestOrigin;
+  const verifiedState = await verifyOAuthState(state, authSecret);
+  if (!verifiedState) {
+    return oauthErrorRedirect(url, appBaseUrl);
+  }
+
+  const callbackUrlParam = url.searchParams.get("callbackUrl");
+  if (callbackUrlParam !== null) {
+    const sanitizedParam = sanitizeRedirectPath(callbackUrlParam);
+    if (sanitizedParam !== verifiedState.callbackPath) {
+      return oauthErrorRedirect(url, appBaseUrl);
     }
-    return configuredAppUrl;
-  })();
+  }
+
   const authBaseUrl =
     process.env.WTUS_AUTH_URL?.trim() ||
     "https://auth.weathertrackus.com";
@@ -106,7 +99,7 @@ export async function GET(request: Request) {
     });
 
     if (!tokenResponse.ok) {
-      return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
+      return oauthErrorRedirect(url, appBaseUrl);
     }
 
     const tokens = (await tokenResponse.json()) as TokenResponse;
@@ -116,7 +109,7 @@ export async function GET(request: Request) {
       null;
 
     if (!claims?.sub) {
-      return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
+      return oauthErrorRedirect(url, appBaseUrl);
     }
 
     const user = await prisma.user.upsert({
@@ -153,8 +146,8 @@ export async function GET(request: Request) {
     });
 
     const useSecureCookie = isHttpsUrl(appBaseUrl);
-    const safeCallbackUrl = sanitizeCallbackUrl(callbackUrl, appBaseUrl);
-    const response = NextResponse.redirect(new URL(safeCallbackUrl, appBaseUrl));
+    const safeCallbackPath = verifiedState.callbackPath;
+    const response = NextResponse.redirect(new URL(safeCallbackPath, appBaseUrl));
     response.cookies.set(buildSessionCookieName(appBaseUrl), sessionToken, {
       httpOnly: true,
       sameSite: "lax",
@@ -177,6 +170,6 @@ export async function GET(request: Request) {
     }
     return response;
   } catch {
-    return NextResponse.redirect(new URL("/?error=OAuthCallback", url.origin));
+    return oauthErrorRedirect(url, appBaseUrl);
   }
 }

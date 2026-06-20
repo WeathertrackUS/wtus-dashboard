@@ -2,6 +2,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Account, NextAuthOptions, Profile, User } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
 import { prisma } from "./db";
+import { resolveSafeRedirectUrl } from "./server/safe-redirect";
 
 const wtusAuthIssuer = process.env.WTUS_AUTH_ISSUER?.trim() || "https://auth.weathertrackus.com";
 const wtusAuthClientSecret =
@@ -116,6 +117,9 @@ export const authOptions: NextAuthOptions = {
     },
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      return resolveSafeRedirectUrl(url, baseUrl);
+    },
     async signIn({ account, profile, user }) {
       if (account?.provider !== "discord") return true;
 
