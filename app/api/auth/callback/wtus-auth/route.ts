@@ -51,7 +51,33 @@ function buildSessionCookieName(appBaseUrl: string) {
 }
 
 function oauthErrorRedirect(requestUrl: URL, appBaseUrl: string) {
-  return NextResponse.redirect(new URL("/?error=OAuthCallback", appBaseUrl || requestUrl.origin));
+  const response = NextResponse.redirect(new URL("/?error=OAuthCallback", appBaseUrl || requestUrl.origin));
+  clearOAuthStateCookie(response);
+  return response;
+}
+
+function clearOAuthStateCookie(response: NextResponse) {
+  response.cookies.set("wtus-oauth-state", "", {
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 0,
+    path: "/api/auth/callback/wtus-auth",
+  });
+}
+
+function readCookie(request: Request, name: string) {
+  const cookieHeader = request.headers.get("cookie") || "";
+  for (const entry of cookieHeader.split(";")) {
+    const [key, ...valueParts] = entry.trim().split("=");
+    if (key === name) {
+      try {
+        return decodeURIComponent(valueParts.join("="));
+      } catch {
+        return "";
+      }
+    }
+  }
+  return "";
 }
 
 export async function GET(request: Request) {
@@ -66,14 +92,15 @@ export async function GET(request: Request) {
   }
 
   const verifiedState = await verifyOAuthState(state, authSecret);
-  if (!verifiedState) {
+  const stateCookie = readCookie(request, "wtus-oauth-state");
+  if (!verifiedState || !stateCookie || stateCookie !== verifiedState.nonce) {
     return oauthErrorRedirect(url, appBaseUrl);
   }
 
   const callbackUrlParam = url.searchParams.get("callbackUrl");
   if (callbackUrlParam !== null) {
     const sanitizedParam = sanitizeRedirectPath(callbackUrlParam);
-    if (sanitizedParam !== verifiedState.callbackPath) {
+    if (sanitizedParam !== callbackUrlParam.trim() || sanitizedParam !== verifiedState.callbackPath) {
       return oauthErrorRedirect(url, appBaseUrl);
     }
   }
@@ -148,6 +175,7 @@ export async function GET(request: Request) {
     const useSecureCookie = isHttpsUrl(appBaseUrl);
     const safeCallbackPath = verifiedState.callbackPath;
     const response = NextResponse.redirect(new URL(safeCallbackPath, appBaseUrl));
+    clearOAuthStateCookie(response);
     response.cookies.set(buildSessionCookieName(appBaseUrl), sessionToken, {
       httpOnly: true,
       sameSite: "lax",

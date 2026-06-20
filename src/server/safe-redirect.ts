@@ -195,10 +195,22 @@ async function verifyStatePayloadSignature(
 }
 
 export async function createOAuthState(callbackPath: string, signingKeyMaterial: string) {
+  return createOAuthStateForNonce(callbackPath, signingKeyMaterial, createOAuthStateNonce());
+}
+
+export function createOAuthStateNonce() {
+  return randomBytes(16).toString("hex");
+}
+
+export async function createOAuthStateForNonce(
+  callbackPath: string,
+  signingKeyMaterial: string,
+  nonce: string,
+) {
   const payload: OAuthStatePayload = {
     callbackPath: sanitizeRedirectPath(callbackPath),
     exp: Date.now() + STATE_TTL_MS,
-    nonce: randomBytes(16).toString("hex"),
+    nonce,
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = await signStatePayload(encoded, signingKeyMaterial);
@@ -217,10 +229,11 @@ export async function verifyOAuthState(state: string, signingKeyMaterial: string
   try {
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as OAuthStatePayload;
     if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
-    if (typeof payload.callbackPath !== "string") return null;
+    if (typeof payload.callbackPath !== "string" || typeof payload.nonce !== "string" || !payload.nonce) return null;
 
     return {
       callbackPath: sanitizeRedirectPath(payload.callbackPath),
+      nonce: payload.nonce,
     };
   } catch {
     return null;

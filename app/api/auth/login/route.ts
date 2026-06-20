@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
-  createOAuthState,
+  createOAuthStateForNonce,
+  createOAuthStateNonce,
   getAppBaseUrl,
   getAuthSecret,
   isLocalAppUrl,
@@ -24,7 +25,8 @@ export async function GET(request: Request) {
 
   const requestUrl = new URL(request.url);
   const callbackPath = sanitizeRedirectPath(requestUrl.searchParams.get("callbackUrl") ?? "/");
-  const oauthState = await createOAuthState(callbackPath, authSecret);
+  const stateNonce = createOAuthStateNonce();
+  const oauthState = await createOAuthStateForNonce(callbackPath, authSecret, stateNonce);
 
   const authBaseUrl =
     process.env.WTUS_AUTH_URL?.trim() ||
@@ -43,5 +45,13 @@ export async function GET(request: Request) {
   const loginUrl = new URL("/login", authBaseUrl);
   loginUrl.searchParams.set("returnTo", authorizeUrl.toString());
 
-  return NextResponse.redirect(loginUrl);
+  const response = NextResponse.redirect(loginUrl);
+  response.cookies.set("wtus-oauth-state", stateNonce, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isLocalAppUrl(appBaseUrl) ? false : new URL(appBaseUrl).protocol === "https:",
+    maxAge: 10 * 60,
+    path: "/api/auth/callback/wtus-auth",
+  });
+  return response;
 }

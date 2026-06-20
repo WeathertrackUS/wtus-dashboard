@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createOAuthState } from "../src/server/safe-redirect";
+import { createOAuthStateForNonce } from "../src/server/safe-redirect";
 
 const AUTH_SECRET = "test-auth-secret";
 const APP_BASE = "https://dashboard.weathertrackus.com";
+const STATE_NONCE = "browser-bound-state-nonce";
 
 const mockPrismaUserUpsert = vi.fn();
 const mockPrismaSessionCreate = vi.fn();
@@ -44,6 +45,16 @@ function mockSuccessfulTokenExchange(sub = "user-123") {
   });
 }
 
+async function createBoundState(callbackPath: string) {
+  return createOAuthStateForNonce(callbackPath, AUTH_SECRET, STATE_NONCE);
+}
+
+function callbackRequest(url: string, includeStateCookie = true) {
+  return new Request(url, {
+    headers: includeStateCookie ? { cookie: `wtus-oauth-state=${STATE_NONCE}` } : undefined,
+  });
+}
+
 describe("wtus-auth callback redirect", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -65,11 +76,11 @@ describe("wtus-auth callback redirect", () => {
   });
 
   it("redirects to the path bound in signed OAuth state", async () => {
-    const state = await createOAuthState("/tasks?tab=open", AUTH_SECRET);
+    const state = await createBoundState("/tasks?tab=open");
     const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
 
     const response = await GET(
-      new Request(`${APP_BASE}/api/auth/callback/wtus-auth?code=abc123&state=${encodeURIComponent(state)}`),
+      callbackRequest(`${APP_BASE}/api/auth/callback/wtus-auth?code=abc123&state=${encodeURIComponent(state)}`),
     );
 
     expect(response.status).toBeGreaterThanOrEqual(300);
@@ -78,11 +89,11 @@ describe("wtus-auth callback redirect", () => {
   });
 
   it("rejects requests with a mismatched callbackUrl query parameter", async () => {
-    const state = await createOAuthState("/tasks", AUTH_SECRET);
+    const state = await createBoundState("/tasks");
     const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
 
     const response = await GET(
-      new Request(
+      callbackRequest(
         `${APP_BASE}/api/auth/callback/wtus-auth?code=abc123&state=${encodeURIComponent(state)}&callbackUrl=${encodeURIComponent("https://evil.com")}`,
       ),
     );
@@ -105,12 +116,41 @@ describe("wtus-auth callback redirect", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("falls back to / for unsafe destinations embedded in state", async () => {
-    const state = await createOAuthState("//evil.com", AUTH_SECRET);
+  it("rejects valid state when the browser-bound nonce cookie is missing", async () => {
+    const state = await createBoundState("/tasks");
     const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
 
     const response = await GET(
-      new Request(`${APP_BASE}/api/auth/callback/wtus-auth?code=abc123&state=${encodeURIComponent(state)}`),
+      callbackRequest(
+        `${APP_BASE}/api/auth/callback/wtus-auth?code=abc123&state=${encodeURIComponent(state)}`,
+        false,
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(`${APP_BASE}/?error=OAuthCallback`);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsafe callbackUrl input even when its sanitized fallback matches state", async () => {
+    const state = await createBoundState("/");
+    const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
+
+    const response = await GET(
+      callbackRequest(
+        `${APP_BASE}/api/auth/callback/wtus-auth?code=abc123&state=${encodeURIComponent(state)}&callbackUrl=${encodeURIComponent("https://evil.com")}`,
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(`${APP_BASE}/?error=OAuthCallback`);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("falls back to / for unsafe destinations embedded in state", async () => {
+    const state = await createBoundState("//evil.com");
+    const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
+
+    const response = await GET(
+      callbackRequest(`${APP_BASE}/api/auth/callback/wtus-auth?code=abc123&state=${encodeURIComponent(state)}`),
     );
 
     expect(response.headers.get("location")).toBe(`${APP_BASE}/`);
@@ -148,6 +188,10 @@ describe("auth login route", () => {
     expect(state).toBeTruthy();
 
     const { verifyOAuthState } = await import("../src/server/safe-redirect");
-    expect(await verifyOAuthState(state!, AUTH_SECRET)).toEqual({ callbackPath: "/tasks" });
+    const verifiedState = await verifyOAuthState(state!, AUTH_SECRET);
+    const stateCookie = response.headers
+      .get("set-cookie")
+      ?.match(/wtus-oauth-state=([^;]+)/)?.[1];
+    expect(verifiedState).toMatchObject({ callbackPath: "/tasks", nonce: stateCookie });
   });
 });
