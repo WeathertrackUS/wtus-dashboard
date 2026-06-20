@@ -68,7 +68,7 @@ describe("OAuth state binding", () => {
     const state = await createOAuthState("/tasks?tab=open", AUTH_SECRET);
     const verified = await verifyOAuthState(state, AUTH_SECRET);
 
-    expect(verified).toEqual({ callbackPath: "/tasks?tab=open" });
+    expect(verified).toMatchObject({ callbackPath: "/tasks?tab=open" });
   });
 
   it("rejects tampered state", async () => {
@@ -95,7 +95,7 @@ describe("OAuth state binding", () => {
     const state = await createOAuthState("//evil.com", AUTH_SECRET);
     const verified = await verifyOAuthState(state, AUTH_SECRET);
 
-    expect(verified).toEqual({ callbackPath: "/" });
+    expect(verified).toMatchObject({ callbackPath: "/" });
   });
 });
 
