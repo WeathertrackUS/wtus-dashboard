@@ -1,7 +1,9 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, webcrypto } from "node:crypto";
 
+const { subtle } = webcrypto;
 const DUMMY_ORIGIN = "http://internal.invalid";
 const STATE_TTL_MS = 10 * 60 * 1000;
+const STATE_SIGNING_CONTEXT = "wtus-dashboard-oauth-state-v1";
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "[::1]"]);
 
 export type SanitizeOptions = {
@@ -153,30 +155,64 @@ export function resolveSafeRedirectUrl(input: string, baseUrl: string, options: 
   return `${base.origin}/`;
 }
 
-export function createOAuthState(callbackPath: string, secret: string) {
+async function importStateSigningKey(signingKeyMaterial: string) {
+  const derivedKey = createHash("sha256")
+    .update(`${STATE_SIGNING_CONTEXT}\0${signingKeyMaterial}`)
+    .digest();
+
+  return subtle.importKey(
+    "raw",
+    derivedKey,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
+
+async function signStatePayload(encodedPayload: string, signingKeyMaterial: string) {
+  const key = await importStateSigningKey(signingKeyMaterial);
+  const signature = await subtle.sign("HMAC", key, new TextEncoder().encode(encodedPayload));
+  return Buffer.from(signature).toString("base64url");
+}
+
+async function verifyStatePayloadSignature(
+  encodedPayload: string,
+  signature: string,
+  signingKeyMaterial: string,
+) {
+  const key = await importStateSigningKey(signingKeyMaterial);
+
+  try {
+    return await subtle.verify(
+      "HMAC",
+      key,
+      Buffer.from(signature, "base64url"),
+      new TextEncoder().encode(encodedPayload),
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function createOAuthState(callbackPath: string, signingKeyMaterial: string) {
   const payload: OAuthStatePayload = {
     callbackPath: sanitizeRedirectPath(callbackPath),
     exp: Date.now() + STATE_TTL_MS,
     nonce: randomBytes(16).toString("hex"),
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = createHmac("sha256", secret).update(encoded).digest("base64url");
+  const signature = await signStatePayload(encoded, signingKeyMaterial);
   return `${encoded}.${signature}`;
 }
 
-export function verifyOAuthState(state: string, secret: string) {
+export async function verifyOAuthState(state: string, signingKeyMaterial: string) {
   const separator = state.lastIndexOf(".");
   if (separator <= 0) return null;
 
   const encoded = state.slice(0, separator);
   const signature = state.slice(separator + 1);
-  const expected = createHmac("sha256", secret).update(encoded).digest("base64url");
-
-  const signatureBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
-  if (signatureBuffer.length !== expectedBuffer.length || !timingSafeEqual(signatureBuffer, expectedBuffer)) {
-    return null;
-  }
+  const isValid = await verifyStatePayloadSignature(encoded, signature, signingKeyMaterial);
+  if (!isValid) return null;
 
   try {
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as OAuthStatePayload;

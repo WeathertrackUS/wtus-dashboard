@@ -65,7 +65,7 @@ describe("wtus-auth callback redirect", () => {
   });
 
   it("redirects to the path bound in signed OAuth state", async () => {
-    const state = createOAuthState("/tasks?tab=open", AUTH_SECRET);
+    const state = await createOAuthState("/tasks?tab=open", AUTH_SECRET);
     const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
 
     const response = await GET(
@@ -78,7 +78,7 @@ describe("wtus-auth callback redirect", () => {
   });
 
   it("rejects requests with a mismatched callbackUrl query parameter", async () => {
-    const state = createOAuthState("/tasks", AUTH_SECRET);
+    const state = await createOAuthState("/tasks", AUTH_SECRET);
     const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
 
     const response = await GET(
@@ -106,7 +106,7 @@ describe("wtus-auth callback redirect", () => {
   });
 
   it("falls back to / for unsafe destinations embedded in state", async () => {
-    const state = createOAuthState("//evil.com", AUTH_SECRET);
+    const state = await createOAuthState("//evil.com", AUTH_SECRET);
     const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
 
     const response = await GET(
@@ -148,6 +148,6 @@ describe("auth login route", () => {
     expect(state).toBeTruthy();
 
     const { verifyOAuthState } = await import("../src/server/safe-redirect");
-    expect(verifyOAuthState(state!, AUTH_SECRET)).toEqual({ callbackPath: "/tasks" });
+    expect(await verifyOAuthState(state!, AUTH_SECRET)).toEqual({ callbackPath: "/tasks" });
   });
 });

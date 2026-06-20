@@ -64,22 +64,22 @@ describe("resolveSafeRedirectUrl", () => {
 });
 
 describe("OAuth state binding", () => {
-  it("round-trips a callback path through signed state", () => {
-    const state = createOAuthState("/tasks?tab=open", AUTH_SECRET);
-    const verified = verifyOAuthState(state, AUTH_SECRET);
+  it("round-trips a callback path through signed state", async () => {
+    const state = await createOAuthState("/tasks?tab=open", AUTH_SECRET);
+    const verified = await verifyOAuthState(state, AUTH_SECRET);
 
     expect(verified).toEqual({ callbackPath: "/tasks?tab=open" });
   });
 
-  it("rejects tampered state", () => {
-    const state = createOAuthState("/tasks", AUTH_SECRET);
+  it("rejects tampered state", async () => {
+    const state = await createOAuthState("/tasks", AUTH_SECRET);
     const tampered = `${state}x`;
 
-    expect(verifyOAuthState(tampered, AUTH_SECRET)).toBeNull();
+    expect(await verifyOAuthState(tampered, AUTH_SECRET)).toBeNull();
   });
 
-  it("rejects expired state", () => {
-    const state = createOAuthState("/tasks", AUTH_SECRET);
+  it("rejects expired state", async () => {
+    const state = await createOAuthState("/tasks", AUTH_SECRET);
     const separator = state.lastIndexOf(".");
     const encoded = state.slice(0, separator);
     const signature = state.slice(separator + 1);
@@ -88,12 +88,12 @@ describe("OAuth state binding", () => {
     const expiredEncoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
     const expiredState = `${expiredEncoded}.${signature}`;
 
-    expect(verifyOAuthState(expiredState, AUTH_SECRET)).toBeNull();
+    expect(await verifyOAuthState(expiredState, AUTH_SECRET)).toBeNull();
   });
 
-  it("sanitizes unsafe callback paths before signing", () => {
-    const state = createOAuthState("//evil.com", AUTH_SECRET);
-    const verified = verifyOAuthState(state, AUTH_SECRET);
+  it("sanitizes unsafe callback paths before signing", async () => {
+    const state = await createOAuthState("//evil.com", AUTH_SECRET);
+    const verified = await verifyOAuthState(state, AUTH_SECRET);
 
     expect(verified).toEqual({ callbackPath: "/" });
   });
@@ -109,10 +109,10 @@ describe("verifyOAuthState", () => {
     vi.useRealTimers();
   });
 
-  it("rejects state after the TTL expires", () => {
-    const state = createOAuthState("/tasks", AUTH_SECRET);
+  it("rejects state after the TTL expires", async () => {
+    const state = await createOAuthState("/tasks", AUTH_SECRET);
 
     vi.setSystemTime(new Date("2026-06-20T12:11:00.000Z"));
-    expect(verifyOAuthState(state, AUTH_SECRET)).toBeNull();
+    expect(await verifyOAuthState(state, AUTH_SECRET)).toBeNull();
   });
 });

@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     return oauthErrorRedirect(url, appBaseUrl);
   }
 
-  const verifiedState = verifyOAuthState(state, authSecret);
+  const verifiedState = await verifyOAuthState(state, authSecret);
   if (!verifiedState) {
     return oauthErrorRedirect(url, appBaseUrl);
   }

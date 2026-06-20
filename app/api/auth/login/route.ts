@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
   const requestUrl = new URL(request.url);
   const callbackPath = sanitizeRedirectPath(requestUrl.searchParams.get("callbackUrl") ?? "/");
-  const oauthState = createOAuthState(callbackPath, authSecret);
+  const oauthState = await createOAuthState(callbackPath, authSecret);
 
   const authBaseUrl =
     process.env.WTUS_AUTH_URL?.trim() ||
