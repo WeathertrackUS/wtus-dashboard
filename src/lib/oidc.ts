@@ -3,8 +3,6 @@ import {
   buildAuthorizationUrl,
   authorizationCodeGrant,
   randomPKCECodeVerifier,
-  randomNonce,
-  randomState,
   calculatePKCECodeChallenge,
   type Configuration,
 } from "openid-client";
@@ -43,7 +41,5 @@ export {
   buildAuthorizationUrl,
   authorizationCodeGrant,
   randomPKCECodeVerifier,
-  randomNonce,
-  randomState,
   calculatePKCECodeChallenge,
 };

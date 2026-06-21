@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createOAuthStateForNonce } from "../src/server/safe-redirect";
+
+const AUTH_SECRET = "test-auth-secret";
+const STATE_NONCE = "browser-bound-state-nonce";
 
 // Mock openid-client at the module level
 const mockAuthorizationCodeGrant = vi.fn();
@@ -9,15 +13,12 @@ vi.mock("../src/lib/oidc", () => ({
   authorizationCodeGrant: (...args: unknown[]) => mockAuthorizationCodeGrant(...args),
   buildAuthorizationUrl: vi.fn(),
   randomPKCECodeVerifier: vi.fn(() => "mock-code-verifier"),
-  randomNonce: vi.fn(() => "mock-nonce"),
-  randomState: vi.fn(() => "mock-state"),
   calculatePKCECodeChallenge: vi.fn(() => Promise.resolve("mock-challenge")),
 }));
 
 // Mock Prisma
 const mockPrismaUserUpsert = vi.fn();
 const mockPrismaSessionCreate = vi.fn();
-const mockPrismaSessionDeleteMany = vi.fn();
 
 vi.mock("../src/db", () => ({
   get prisma() {
@@ -27,7 +28,6 @@ vi.mock("../src/db", () => ({
       },
       session: {
         create: (...args: unknown[]) => mockPrismaSessionCreate(...args),
-        deleteMany: (...args: unknown[]) => mockPrismaSessionDeleteMany(...args),
       },
     };
   },
@@ -56,6 +56,7 @@ describe("GET /api/auth/callback/wtus-auth", () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("APP_URL", "http://localhost:3000");
     vi.stubEnv("WTUS_DASHBOARD_OIDC_CLIENT_SECRET", "test-secret");
+    vi.stubEnv("AUTH_SECRET", AUTH_SECRET);
 
     mockGetOidcConfig.mockResolvedValue({
       _redirectUri: "http://localhost:3000/api/auth/callback/wtus-auth",
@@ -74,8 +75,7 @@ describe("GET /api/auth/callback/wtus-auth", () => {
       const request = createRequest(
         "http://localhost:3000/api/auth/callback/wtus-auth?state=test-state",
         {
-          oidc_state: "test-state",
-          oidc_nonce: "test-nonce",
+          "wtus-oauth-state": STATE_NONCE,
           oidc_pkce: "test-pkce",
         },
       );
@@ -92,10 +92,10 @@ describe("GET /api/auth/callback/wtus-auth", () => {
 
   describe("missing state cookie", () => {
     it("redirects with error when state cookie is missing", async () => {
+      const state = await createOAuthStateForNonce("/", AUTH_SECRET, STATE_NONCE);
       const request = createRequest(
-        "http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=test-state",
+        `http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=${encodeURIComponent(state)}`,
         {
-          oidc_nonce: "test-nonce",
           oidc_pkce: "test-pkce",
         },
       );
@@ -106,19 +106,17 @@ describe("GET /api/auth/callback/wtus-auth", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toContain(
-        "error=OAuthStateMissing",
-      );
+      expect(response.headers.get("location")).toContain("error=OAuthCallback");
     });
   });
 
   describe("state mismatch", () => {
     it("redirects with error when state does not match", async () => {
+      const state = await createOAuthStateForNonce("/", AUTH_SECRET, "wrong-nonce");
       const request = createRequest(
-        "http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=wrong-state",
+        `http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=${encodeURIComponent(state)}`,
         {
-          oidc_state: "expected-state",
-          oidc_nonce: "test-nonce",
+          "wtus-oauth-state": STATE_NONCE,
           oidc_pkce: "test-pkce",
         },
       );
@@ -129,19 +127,17 @@ describe("GET /api/auth/callback/wtus-auth", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toContain(
-        "error=OAuthStateMismatch",
-      );
+      expect(response.headers.get("location")).toContain("error=OAuthCallback");
     });
   });
 
   describe("missing PKCE code verifier", () => {
     it("redirects with error when PKCE cookie is missing", async () => {
+      const state = await createOAuthStateForNonce("/", AUTH_SECRET, STATE_NONCE);
       const request = createRequest(
-        "http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=test-state",
+        `http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=${encodeURIComponent(state)}`,
         {
-          oidc_state: "test-state",
-          oidc_nonce: "test-nonce",
+          "wtus-oauth-state": STATE_NONCE,
         },
       );
 
@@ -151,9 +147,7 @@ describe("GET /api/auth/callback/wtus-auth", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toContain(
-        "error=OAuthPKCEMissing",
-      );
+      expect(response.headers.get("location")).toContain("error=OAuthCallback");
     });
   });
 
@@ -163,11 +157,11 @@ describe("GET /api/auth/callback/wtus-auth", () => {
         new Error("Token exchange failed"),
       );
 
+      const state = await createOAuthStateForNonce("/", AUTH_SECRET, STATE_NONCE);
       const request = createRequest(
-        "http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=test-state",
+        `http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=${encodeURIComponent(state)}`,
         {
-          oidc_state: "test-state",
-          oidc_nonce: "test-nonce",
+          "wtus-oauth-state": STATE_NONCE,
           oidc_pkce: "test-pkce",
         },
       );
@@ -191,7 +185,7 @@ describe("GET /api/auth/callback/wtus-auth", () => {
           email: "test@example.com",
           name: "Test User",
           preferred_username: "testuser",
-          wtus_discord_verified: true,
+          wtus_member: true,
         }),
         id_token: "mock-id-token",
       });
@@ -201,11 +195,11 @@ describe("GET /api/auth/callback/wtus-auth", () => {
         discordUserId: "user-123",
       });
 
+      const state = await createOAuthStateForNonce("/", AUTH_SECRET, STATE_NONCE);
       const request = createRequest(
-        "http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=test-state",
+        `http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=${encodeURIComponent(state)}`,
         {
-          oidc_state: "test-state",
-          oidc_nonce: "test-nonce",
+          "wtus-oauth-state": STATE_NONCE,
           oidc_pkce: "test-pkce",
         },
       );
@@ -218,7 +212,6 @@ describe("GET /api/auth/callback/wtus-auth", () => {
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe("http://localhost:3000/");
 
-      // Verify user was upserted with correct claims
       expect(mockPrismaUserUpsert).toHaveBeenCalledWith({
         where: { discordUserId: "user-123" },
         update: expect.objectContaining({
@@ -239,7 +232,6 @@ describe("GET /api/auth/callback/wtus-auth", () => {
         }),
       });
 
-      // Verify session was created
       expect(mockPrismaSessionCreate).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: "user-123",
@@ -263,11 +255,11 @@ describe("GET /api/auth/callback/wtus-auth", () => {
         discordUserId: "user-456",
       });
 
+      const state = await createOAuthStateForNonce("/", AUTH_SECRET, STATE_NONCE);
       const request = createRequest(
-        "http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=test-state",
+        `http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=${encodeURIComponent(state)}`,
         {
-          oidc_state: "test-state",
-          oidc_nonce: "test-nonce",
+          "wtus-oauth-state": STATE_NONCE,
           oidc_pkce: "test-pkce",
         },
       );
@@ -279,7 +271,6 @@ describe("GET /api/auth/callback/wtus-auth", () => {
 
       expect(response.status).toBe(307);
 
-      // Verify user was created with unverified status
       expect(mockPrismaUserUpsert).toHaveBeenCalledWith({
         where: { discordUserId: "user-456" },
         update: expect.objectContaining({
@@ -305,11 +296,11 @@ describe("GET /api/auth/callback/wtus-auth", () => {
         id_token: "mock-id-token",
       });
 
+      const state = await createOAuthStateForNonce("/", AUTH_SECRET, STATE_NONCE);
       const request = createRequest(
-        "http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=test-state",
+        `http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=${encodeURIComponent(state)}`,
         {
-          oidc_state: "test-state",
-          oidc_nonce: "test-nonce",
+          "wtus-oauth-state": STATE_NONCE,
           oidc_pkce: "test-pkce",
         },
       );

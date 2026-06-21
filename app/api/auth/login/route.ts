@@ -11,7 +11,6 @@ import {
   getOidcConfig,
   buildAuthorizationUrl,
   randomPKCECodeVerifier,
-  randomState,
   calculatePKCECodeChallenge,
 } from "../../../../src/lib/oidc";
 
@@ -64,9 +63,6 @@ export async function GET(request: Request) {
     // Generate PKCE
     const codeVerifier = randomPKCECodeVerifier();
     const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
-
-    // Generate state and nonce for OIDC
-    const oidcState = randomState();
 
     // Generate signed state carrying the callback path
     const requestUrl = new URL(request.url);

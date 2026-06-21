@@ -19,7 +19,7 @@ type TokenClaims = {
   preferred_username?: string;
   picture?: string;
   discord_user_id?: string;
-  wtus_discord_verified?: boolean;
+  wtus_member?: boolean;
 };
 
 function isHttpsUrl(value: string) {
@@ -39,6 +39,7 @@ function buildSessionCookieName(appBaseUrl: string) {
 function oauthErrorRedirect(requestUrl: URL, appBaseUrl: string) {
   const response = NextResponse.redirect(new URL("/?error=OAuthCallback", appBaseUrl || requestUrl.origin));
   clearOAuthStateCookie(response);
+  response.cookies.delete("oidc_pkce");
   return response;
 }
 
@@ -138,7 +139,7 @@ export async function GET(request: Request) {
     });
 
     const discordUserId = idTokenClaims.discord_user_id || idTokenClaims.sub;
-    const isDiscordVerified = idTokenClaims.wtus_discord_verified === true;
+    const isDiscordVerified = idTokenClaims.wtus_member === true;
 
     const user = await prisma.user.upsert({
       where: {
