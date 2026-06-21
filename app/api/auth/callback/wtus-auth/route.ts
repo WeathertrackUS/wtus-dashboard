@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../../src/db";
+import { getOidcConfig, authorizationCodeGrant } from "../../../../../src/lib/oidc";
 import {
   getAppBaseUrl,
   getAuthSecret,
@@ -11,11 +12,6 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type TokenResponse = {
-  access_token?: string;
-  id_token?: string;
-};
-
 type TokenClaims = {
   sub?: string;
   email?: string;
@@ -23,18 +19,8 @@ type TokenClaims = {
   preferred_username?: string;
   picture?: string;
   discord_user_id?: string;
+  wtus_discord_verified?: boolean;
 };
-
-function decodeJwtPayload(token: string): TokenClaims | null {
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-  try {
-    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
-    return JSON.parse(payload) as TokenClaims;
-  } catch {
-    return null;
-  }
-}
 
 function isHttpsUrl(value: string) {
   try {
@@ -80,6 +66,18 @@ function readCookie(request: Request, name: string) {
   return "";
 }
 
+function getCookieValue(
+  cookieHeader: string | null,
+  name: string,
+): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.split("=").slice(1).join("=")) : null;
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code")?.trim() || "";
@@ -105,61 +103,72 @@ export async function GET(request: Request) {
     }
   }
 
-  const authBaseUrl =
-    process.env.WTUS_AUTH_URL?.trim() ||
-    "https://auth.weathertrackus.com";
+  // Retrieve PKCE code verifier from cookies
+  const cookieHeader = request.headers.get("cookie");
+  const codeVerifier = getCookieValue(cookieHeader, "oidc_pkce");
+
+  if (!codeVerifier) {
+    console.error("[AUTH] Missing PKCE code verifier cookie");
+    return oauthErrorRedirect(url, appBaseUrl);
+  }
 
   try {
-    const tokenResponse = await fetch(new URL("/token", authBaseUrl), {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        client_id: "wtus-dashboard",
-        client_secret:
-          process.env.WTUS_DASHBOARD_OIDC_CLIENT_SECRET?.trim() ||
-          process.env.AUTH_SECRET?.trim() ||
-          "",
-        redirect_uri: new URL("/api/auth/callback/wtus-auth", appBaseUrl).toString(),
-      }),
+    const config = await getOidcConfig();
+    const redirectUri =
+      (config as unknown as { _redirectUri?: string })._redirectUri ||
+      new URL("/api/auth/callback/wtus-auth", appBaseUrl).toString();
+
+    const callbackUrlObj = new URL(request.url);
+
+    const tokens = await authorizationCodeGrant(config, callbackUrlObj, {
+      expectedState: state,
+      pkceCodeVerifier: codeVerifier,
     });
 
-    if (!tokenResponse.ok) {
+    const idTokenClaims = tokens.claims() as TokenClaims | undefined;
+
+    if (!idTokenClaims?.sub) {
+      console.error("[AUTH] Missing sub claim in verified token");
       return oauthErrorRedirect(url, appBaseUrl);
     }
 
-    const tokens = (await tokenResponse.json()) as TokenResponse;
-    const claims =
-      (tokens.id_token && decodeJwtPayload(tokens.id_token)) ||
-      (tokens.access_token && decodeJwtPayload(tokens.access_token)) ||
-      null;
+    console.log("[AUTH] OIDC token verified successfully", {
+      sub: idTokenClaims.sub,
+      issuer: tokens.id_token ? "verified" : "no-id-token",
+    });
 
-    if (!claims?.sub) {
-      return oauthErrorRedirect(url, appBaseUrl);
-    }
+    const discordUserId = idTokenClaims.discord_user_id || idTokenClaims.sub;
+    const isDiscordVerified = idTokenClaims.wtus_discord_verified === true;
 
     const user = await prisma.user.upsert({
       where: {
-        discordUserId: claims.discord_user_id || claims.sub,
+        discordUserId,
       },
       update: {
-        email: claims.email ?? null,
-        name: claims.name ?? claims.preferred_username ?? claims.email ?? null,
-        discordUserId: claims.discord_user_id || claims.sub,
-        discordHandle: claims.preferred_username ?? null,
-        discordServerVerified: true,
-        status: "active",
-        onboardingStatus: "verified",
+        email: idTokenClaims.email ?? null,
+        name:
+          idTokenClaims.name ??
+          idTokenClaims.preferred_username ??
+          idTokenClaims.email ??
+          null,
+        discordUserId,
+        discordHandle: idTokenClaims.preferred_username ?? null,
+        discordServerVerified: isDiscordVerified,
+        status: isDiscordVerified ? "active" : "invited",
+        onboardingStatus: isDiscordVerified ? "verified" : "pending",
       },
       create: {
-        email: claims.email ?? null,
-        name: claims.name ?? claims.preferred_username ?? claims.email ?? null,
-        discordUserId: claims.discord_user_id || claims.sub,
-        discordHandle: claims.preferred_username ?? null,
-        discordServerVerified: true,
-        status: "active",
-        onboardingStatus: "verified",
+        email: idTokenClaims.email ?? null,
+        name:
+          idTokenClaims.name ??
+          idTokenClaims.preferred_username ??
+          idTokenClaims.email ??
+          null,
+        discordUserId,
+        discordHandle: idTokenClaims.preferred_username ?? null,
+        discordServerVerified: isDiscordVerified,
+        status: isDiscordVerified ? "active" : "invited",
+        onboardingStatus: isDiscordVerified ? "verified" : "pending",
       },
     });
 
@@ -176,6 +185,7 @@ export async function GET(request: Request) {
     const safeCallbackPath = verifiedState.callbackPath;
     const response = NextResponse.redirect(new URL(safeCallbackPath, appBaseUrl));
     clearOAuthStateCookie(response);
+
     response.cookies.set(buildSessionCookieName(appBaseUrl), sessionToken, {
       httpOnly: true,
       sameSite: "lax",
@@ -189,15 +199,23 @@ export async function GET(request: Request) {
       path: "/",
     });
     if (useSecureCookie) {
-      response.cookies.set("__Secure-next-auth.session-token", sessionToken, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: true,
-        path: "/",
-      });
+      response.cookies.set(
+        "__Secure-next-auth.session-token",
+        sessionToken,
+        {
+          httpOnly: true,
+          sameSite: "lax",
+          secure: true,
+          path: "/",
+        },
+      );
     }
+
+    response.cookies.delete("oidc_pkce");
+
     return response;
-  } catch {
+  } catch (error) {
+    console.error("[AUTH] OIDC token exchange/verification failed:", error);
     return oauthErrorRedirect(url, appBaseUrl);
   }
 }

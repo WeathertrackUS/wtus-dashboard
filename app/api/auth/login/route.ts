@@ -7,9 +7,41 @@ import {
   isLocalAppUrl,
   sanitizeRedirectPath,
 } from "../../../../src/server/safe-redirect";
+import {
+  getOidcConfig,
+  buildAuthorizationUrl,
+  randomPKCECodeVerifier,
+  randomState,
+  calculatePKCECodeChallenge,
+} from "../../../../src/lib/oidc";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+function isHttpsUrl(value: string) {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function setCookie(
+  response: NextResponse,
+  name: string,
+  value: string,
+  appBaseUrl: string,
+  maxAge: number = 600,
+) {
+  const secure = isHttpsUrl(appBaseUrl);
+  response.cookies.set(name, value, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure,
+    path: "/",
+    maxAge,
+  });
+}
 
 export async function GET(request: Request) {
   const appBaseUrl = getAppBaseUrl(request);
@@ -23,35 +55,49 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/?error=AuthOrigin", appBaseUrl));
   }
 
-  const requestUrl = new URL(request.url);
-  const callbackPath = sanitizeRedirectPath(requestUrl.searchParams.get("callbackUrl") ?? "/");
-  const stateNonce = createOAuthStateNonce();
-  const oauthState = await createOAuthStateForNonce(callbackPath, authSecret, stateNonce);
+  try {
+    const config = await getOidcConfig();
+    const redirectUri =
+      (config as unknown as { _redirectUri?: string })._redirectUri ||
+      new URL("/api/auth/callback/wtus-auth", appBaseUrl).toString();
 
-  const authBaseUrl =
-    process.env.WTUS_AUTH_URL?.trim() ||
-    "https://auth.weathertrackus.com";
+    // Generate PKCE
+    const codeVerifier = randomPKCECodeVerifier();
+    const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
 
-  const authorizeUrl = new URL("/authorize", authBaseUrl);
-  authorizeUrl.searchParams.set("client_id", "wtus-dashboard");
-  authorizeUrl.searchParams.set(
-    "redirect_uri",
-    new URL("/api/auth/callback/wtus-auth", appBaseUrl).toString(),
-  );
-  authorizeUrl.searchParams.set("response_type", "code");
-  authorizeUrl.searchParams.set("scope", "openid");
-  authorizeUrl.searchParams.set("state", oauthState);
+    // Generate state and nonce for OIDC
+    const oidcState = randomState();
 
-  const loginUrl = new URL("/login", authBaseUrl);
-  loginUrl.searchParams.set("returnTo", authorizeUrl.toString());
+    // Generate signed state carrying the callback path
+    const requestUrl = new URL(request.url);
+    const callbackPath = sanitizeRedirectPath(requestUrl.searchParams.get("callbackUrl") ?? "/");
+    const stateNonce = createOAuthStateNonce();
+    const oauthState = await createOAuthStateForNonce(callbackPath, authSecret, stateNonce);
 
-  const response = NextResponse.redirect(loginUrl);
-  response.cookies.set("wtus-oauth-state", stateNonce, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: isLocalAppUrl(appBaseUrl) ? false : new URL(appBaseUrl).protocol === "https:",
-    maxAge: 10 * 60,
-    path: "/api/auth/callback/wtus-auth",
-  });
-  return response;
+    // Build authorization URL - use signed oauthState as the OIDC state parameter
+    const authorizeUrl = buildAuthorizationUrl(config, {
+      redirect_uri: redirectUri,
+      scope: "openid",
+      state: oauthState,
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+    });
+
+    const response = NextResponse.redirect(authorizeUrl);
+
+    // Store PKCE code verifier and state nonce in cookies
+    setCookie(response, "oidc_pkce", codeVerifier, appBaseUrl, 600);
+    response.cookies.set("wtus-oauth-state", stateNonce, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isLocalAppUrl(appBaseUrl) ? false : new URL(appBaseUrl).protocol === "https:",
+      maxAge: 10 * 60,
+      path: "/api/auth/callback/wtus-auth",
+    });
+
+    return response;
+  } catch (error) {
+    console.error("OIDC login error:", error);
+    return NextResponse.redirect(new URL("/?error=AuthLogin", appBaseUrl));
+  }
 }
