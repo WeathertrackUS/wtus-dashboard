@@ -159,7 +159,6 @@ export async function getLeadDashboardData(leadSections: Array<{ section: Sectio
 
   return {
     ...base,
-    availability: base.availability.filter((a) => memberIdsInSection.has(a.memberId)),
     workSubmissions: base.workSubmissions.filter((w) => memberIdsInSection.has(w.memberId)),
     reminderPreferences: reminderPreferences
       .filter((p) => memberIdsInSection.has(p.userId))
