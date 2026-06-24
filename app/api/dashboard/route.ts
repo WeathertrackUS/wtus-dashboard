@@ -14,7 +14,7 @@ export async function GET() {
     const data = isGlobalOperator(result.access)
       ? await getOperatorDashboardData()
       : isSectionLead(result.access)
-        ? await getLeadDashboardData()
+        ? await getLeadDashboardData(result.access.sections)
         : await getMemberDashboardData();
     return NextResponse.json(data);
   } catch {

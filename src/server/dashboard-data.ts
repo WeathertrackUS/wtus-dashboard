@@ -136,8 +136,10 @@ export async function getMemberDashboardData(): Promise<MemberDashboardData> {
   };
 }
 
-/** Fetch everything a section lead is allowed to see — member data plus coordination fields */
-export async function getLeadDashboardData(): Promise<LeadDashboardData> {
+/** Fetch everything a section lead is allowed to see — member data plus coordination fields for their sections */
+export async function getLeadDashboardData(leadSections: Array<{ section: SectionKey; role: "lead" | "member" }>): Promise<LeadDashboardData> {
+  const sectionKeys = new Set(leadSections.filter((s) => s.role === "lead").map((s) => s.section));
+
   const [base, reminderPreferences, specialRequests] = await Promise.all([
     getMemberDashboardData(),
     prisma.reminderPreference.findMany({
@@ -149,8 +151,74 @@ export async function getLeadDashboardData(): Promise<LeadDashboardData> {
     }),
   ]);
 
+  const memberIdsInSection = new Set(
+    base.members
+      .filter((m) => m.sections.some((s) => sectionKeys.has(s.section)))
+      .map((m) => m.id),
+  );
+
   return {
     ...base,
+    reminderPreferences: reminderPreferences
+      .filter((p) => memberIdsInSection.has(p.userId))
+      .map<ReminderPreference>((preference) => ({
+        id: preference.id,
+        memberId: preference.userId,
+        frequency: preference.frequency,
+        sendClearForDay: preference.sendClearForDay,
+        taskReminders: preference.taskReminders,
+        liveEventReminders: preference.liveEventReminders,
+        specialRequestReminders: preference.specialRequestReminders,
+        preferredDays: preference.preferredDays,
+        preferredTimes: preference.preferredTimes,
+        preferredPlatforms: preference.preferredPlatforms,
+        preferredContentTypes: preference.preferredContentTypes,
+        notes: preference.notes ?? "",
+      })),
+    specialRequests: specialRequests
+      .filter((r) => memberIdsInSection.has(r.targetUserId))
+      .map<SpecialRequest>((request) => ({
+        id: request.id,
+        memberId: request.targetUserId,
+        createdById: request.createdById ?? undefined,
+        title: request.title,
+        prompt: request.prompt,
+        role: request.role,
+        platform: request.platform ?? undefined,
+        dueAt: request.dueAt?.toISOString(),
+        status: request.status,
+        responseNote: request.responseNote ?? "",
+        createdAt: request.createdAt.toLocaleString(),
+      })),
+  };
+}
+
+/** Fetch everything an operator (owner/operations_lead) is allowed to see */
+export async function getOperatorDashboardData(): Promise<OperatorDashboardData> {
+  const [base, invites, reminderPreferences, specialRequests] = await Promise.all([
+    getMemberDashboardData(),
+    prisma.onboardingInvite.findMany({
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.reminderPreference.findMany({
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.specialRequest.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+  ]);
+
+  return {
+    ...base,
+    invites: invites.map<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>((invite) => ({
+      id: invite.id,
+      label: invite.label,
+      createdByRole: "operations",
+      createdAt: invite.createdAt.toLocaleString(),
+      status: invite.status,
+      memberId: invite.usedByUserId ?? undefined,
+    })),
     reminderPreferences: reminderPreferences.map<ReminderPreference>((preference) => ({
       id: preference.id,
       memberId: preference.userId,
@@ -177,28 +245,6 @@ export async function getLeadDashboardData(): Promise<LeadDashboardData> {
       status: request.status,
       responseNote: request.responseNote ?? "",
       createdAt: request.createdAt.toLocaleString(),
-    })),
-  };
-}
-
-/** Fetch everything an operator (owner/operations_lead) is allowed to see */
-export async function getOperatorDashboardData(): Promise<OperatorDashboardData> {
-  const [base, invites] = await Promise.all([
-    getLeadDashboardData(),
-    prisma.onboardingInvite.findMany({
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
-
-  return {
-    ...base,
-    invites: invites.map<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>((invite) => ({
-      id: invite.id,
-      label: invite.label,
-      createdByRole: "operations",
-      createdAt: invite.createdAt.toLocaleString(),
-      status: invite.status,
-      memberId: invite.usedByUserId ?? undefined,
     })),
   };
 }

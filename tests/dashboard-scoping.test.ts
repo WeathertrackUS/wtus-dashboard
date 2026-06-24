@@ -223,18 +223,72 @@ describe("dashboard data scoping", () => {
       if (table === "recurringAvailability") return Promise.resolve([]);
       if (table === "onboardingInvite") return Promise.resolve([]);
       if (table === "reminderPreference") return Promise.resolve([stubReminderPreference()]);
-      if (table === "specialRequest") return Promise.resolve([stubSpecialRequest()]);
+      if (table === "specialRequest") return Promise.resolve([{ ...stubSpecialRequest(), targetUserId: "u1" }]);
       return Promise.resolve([]);
     });
 
     const { getLeadDashboardData } = await import("../src/server/dashboard-data");
-    const data = await getLeadDashboardData();
+    const data = await getLeadDashboardData([{ section: "forecasting", role: "lead" }]);
 
     expect(data).toHaveProperty("reminderPreferences");
     expect(data).toHaveProperty("specialRequests");
     expect(data).not.toHaveProperty("invites");
     expect(data.reminderPreferences).toHaveLength(1);
     expect(data.specialRequests).toHaveLength(1);
+  });
+
+  it("lead payload filters reminderPreferences and specialRequests to section members only", async () => {
+    const memberInSection = {
+      id: "u1",
+      name: "In Section",
+      handle: "insection",
+      discordHandle: null,
+      email: null,
+      discordUserId: "111",
+      onboardingStatus: "verified" as const,
+      globalRoles: [{ role: { key: "member" } }],
+      sectionMemberships: [{ role: "member" as const, section: { key: "forecasting" } }],
+      createdAt: new Date(),
+    };
+
+    const memberOutOfSection = {
+      id: "u2",
+      name: "Out of Section",
+      handle: "outsection",
+      discordHandle: null,
+      email: null,
+      discordUserId: "222",
+      onboardingStatus: "verified" as const,
+      globalRoles: [{ role: { key: "member" } }],
+      sectionMemberships: [{ role: "member" as const, section: { key: "graphics" } }],
+      createdAt: new Date(),
+    };
+
+    mockPrismaFindMany.mockImplementation((table: string) => {
+      if (table === "user") return Promise.resolve([memberInSection, memberOutOfSection]);
+      if (table === "availabilityWindow") return Promise.resolve([]);
+      if (table === "workSubmission") return Promise.resolve([]);
+      if (table === "temporaryRoleCoverage") return Promise.resolve([]);
+      if (table === "liveEvent") return Promise.resolve([]);
+      if (table === "recurringAvailability") return Promise.resolve([]);
+      if (table === "reminderPreference") return Promise.resolve([
+        { ...stubReminderPreference(), id: "rp1", userId: "u1" },
+        { ...stubReminderPreference(), id: "rp2", userId: "u2" },
+      ]);
+      if (table === "specialRequest") return Promise.resolve([
+        { ...stubSpecialRequest(), id: "sr1", targetUserId: "u1" },
+        { ...stubSpecialRequest(), id: "sr2", targetUserId: "u2" },
+      ]);
+      return Promise.resolve([]);
+    });
+
+    const { getLeadDashboardData } = await import("../src/server/dashboard-data");
+    const data = await getLeadDashboardData([{ section: "forecasting", role: "lead" }]);
+
+    expect(data.reminderPreferences).toHaveLength(1);
+    expect(data.reminderPreferences[0].memberId).toBe("u1");
+    expect(data.specialRequests).toHaveLength(1);
+    expect(data.specialRequests[0].memberId).toBe("u1");
   });
 });
 
