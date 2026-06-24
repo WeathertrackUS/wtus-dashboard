@@ -82,15 +82,15 @@ const startDiscordLogin = () => {
 
 type DashboardData = {
   members: Member[];
-  invites: OnboardingInvite[];
   tasks: Task[];
   availability: AvailabilityWindow[];
   recurringSchedules: RecurringSchedule[];
   liveEvents: LiveEvent[];
   coverage: TemporaryCoverage[];
-  reminderPreferences: ReminderPreference[];
   workSubmissions: WorkSubmission[];
-  specialRequests: SpecialRequest[];
+  invites?: OnboardingInvite[];
+  reminderPreferences?: ReminderPreference[];
+  specialRequests?: SpecialRequest[];
 };
 
 type NavItem =
@@ -3334,7 +3334,7 @@ export function App() {
         const data = (await response.json()) as DashboardData;
         if (!activeRequest) return;
         setMembers(data.members);
-        setInvites(data.invites);
+        setInvites(data.invites ?? []);
         setTasks(data.tasks);
         setAvailability(data.availability);
         setRecurringSchedules(data.recurringSchedules);
