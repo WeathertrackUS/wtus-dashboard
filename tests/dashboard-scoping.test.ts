@@ -253,6 +253,8 @@ describe("API route role-based branching", () => {
 });
 
 describe("isGlobalOperator", () => {
+  // These tests verify the expected logic inline because the permissions module
+  // is mocked for API route tests. If isGlobalOperator's logic changes, update these.
   it("returns true for owner role", () => {
     const access = { userId: "u1", globalRoles: ["owner"], sections: [] as never[] };
     expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(true);
@@ -276,5 +278,84 @@ describe("isGlobalOperator", () => {
   it("returns false for empty roles", () => {
     const access = { userId: "u1", globalRoles: [], sections: [] as never[] };
     expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(false);
+  });
+});
+
+describe("error paths", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 401 when user is not authenticated", async () => {
+    mockRequireCurrentUser.mockResolvedValue({
+      response: new Response(JSON.stringify({ error: "Sign in required" }), { status: 401 }),
+    });
+
+    const { GET } = await import("../app/api/dashboard/route");
+    const response = await GET();
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 403 when user is not verified", async () => {
+    mockRequireCurrentUser.mockResolvedValue({
+      response: new Response(JSON.stringify({ error: "Discord server verification required" }), { status: 403 }),
+    });
+
+    const { GET } = await import("../app/api/dashboard/route");
+    const response = await GET();
+
+    expect(response.status).toBe(403);
+  });
+
+  it("returns 503 when database query fails", async () => {
+    mockRequireCurrentUser.mockResolvedValue({
+      access: { userId: "u1", globalRoles: ["member"], sections: [] },
+    });
+    mockIsGlobalOperator.mockReturnValue(false);
+    mockPrismaFindMany.mockRejectedValue(new Error("Connection failed"));
+
+    const { GET } = await import("../app/api/dashboard/route");
+    const response = await GET();
+
+    expect(response.status).toBe(503);
+  });
+});
+
+describe("member payload completeness", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("includes work submissions in member payload", async () => {
+    const workSubmission = {
+      id: "ws1",
+      userId: "u1",
+      title: "Storm graphic",
+      workDate: new Date("2026-01-01"),
+      platform: "twitter",
+      contentType: "social_graphic" as const,
+      memberRole: "Graphics",
+      description: " severe weather graphic",
+      assetUrl: "https://example.com/graphic.png",
+      skills: ["graphics"],
+      notable: true,
+    };
+
+    mockPrismaFindMany.mockImplementation((table: string) => {
+      if (table === "user") return Promise.resolve([stubUser()]);
+      if (table === "availabilityWindow") return Promise.resolve([]);
+      if (table === "workSubmission") return Promise.resolve([workSubmission]);
+      if (table === "temporaryRoleCoverage") return Promise.resolve([]);
+      if (table === "liveEvent") return Promise.resolve([]);
+      if (table === "recurringAvailability") return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    const { getMemberDashboardData } = await import("../src/server/dashboard-data");
+    const data = await getMemberDashboardData();
+
+    expect(data.workSubmissions).toHaveLength(1);
+    expect(data.workSubmissions[0]).toHaveProperty("title", "Storm graphic");
   });
 });
