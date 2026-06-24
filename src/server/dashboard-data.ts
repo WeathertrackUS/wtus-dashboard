@@ -12,14 +12,17 @@ import type {
   Task,
   TemporaryCoverage,
   WorkSubmission,
+  LeadDashboardData,
+  MemberDashboardData,
+  OperatorDashboardData,
 } from "../types";
 
-export async function getDashboardData() {
-  const [members, taskResult, availability, recurringSchedules, liveEvents, coverage, invites, reminderPreferences, workSubmissions, specialRequests] = await Promise.all([
+/** Fetch only the data regular members are allowed to see */
+export async function getMemberDashboardData(): Promise<MemberDashboardData> {
+  const [members, taskResult, availability, recurringSchedules, liveEvents, coverage, workSubmissions] = await Promise.all([
     prisma.user.findMany({
       orderBy: { createdAt: "desc" },
       include: {
-        globalRoles: { include: { role: true } },
         sectionMemberships: { include: { section: true } },
       },
     }),
@@ -44,30 +47,17 @@ export async function getDashboardData() {
       orderBy: { startsAt: "asc" },
       include: { section: true },
     }),
-    prisma.onboardingInvite.findMany({
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.reminderPreference.findMany({
-      orderBy: { updatedAt: "desc" },
-    }),
     prisma.workSubmission.findMany({
       orderBy: [{ workDate: "desc" }, { createdAt: "desc" }],
-      take: 100,
-    }),
-    prisma.specialRequest.findMany({
-      orderBy: { createdAt: "desc" },
       take: 100,
     }),
   ]);
 
   return {
-    members: members.map<Member>((member) => ({
+    members: members.map((member) => ({
       id: member.id,
       name: member.name ?? "Unnamed member",
       handle: member.handle ?? member.discordHandle ?? member.email ?? "member",
-      discordUserId: member.discordUserId ?? undefined,
-      onboardingStatus: member.onboardingStatus,
-      globalRoles: member.globalRoles.map((assignment) => assignment.role.key),
       sections: member.sectionMemberships.map((membership) => ({
         section: membership.section.key,
         role: membership.role,
@@ -130,9 +120,100 @@ export async function getDashboardData() {
       endsAt: item.endsAt.toISOString(),
       status: item.status,
     })),
-    invites: invites.map<OnboardingInvite>((invite) => ({
+    workSubmissions: workSubmissions.map<WorkSubmission>((submission) => ({
+      id: submission.id,
+      memberId: submission.userId,
+      title: submission.title,
+      workDate: submission.workDate.toISOString().slice(0, 10),
+      platform: submission.platform,
+      contentType: submission.contentType,
+      memberRole: submission.memberRole,
+      description: submission.description,
+      assetUrl: submission.assetUrl ?? "",
+      skills: submission.skills,
+      notable: submission.notable,
+    })),
+  };
+}
+
+/** Fetch everything a section lead is allowed to see — member data plus coordination fields for their sections */
+export async function getLeadDashboardData(leadSections: Array<{ section: SectionKey; role: "lead" | "member" }>): Promise<LeadDashboardData> {
+  const sectionKeys = new Set(leadSections.filter((s) => s.role === "lead").map((s) => s.section));
+
+  const [base, reminderPreferences, specialRequests] = await Promise.all([
+    getMemberDashboardData(),
+    prisma.reminderPreference.findMany({
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.specialRequest.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+  ]);
+
+  const memberIdsInSection = new Set(
+    base.members
+      .filter((m) => m.sections.some((s) => sectionKeys.has(s.section)))
+      .map((m) => m.id),
+  );
+
+  return {
+    ...base,
+    workSubmissions: base.workSubmissions.filter((w) => memberIdsInSection.has(w.memberId)),
+    reminderPreferences: reminderPreferences
+      .filter((p) => memberIdsInSection.has(p.userId))
+      .map<ReminderPreference>((preference) => ({
+        id: preference.id,
+        memberId: preference.userId,
+        frequency: preference.frequency,
+        sendClearForDay: preference.sendClearForDay,
+        taskReminders: preference.taskReminders,
+        liveEventReminders: preference.liveEventReminders,
+        specialRequestReminders: preference.specialRequestReminders,
+        preferredDays: preference.preferredDays,
+        preferredTimes: preference.preferredTimes,
+        preferredPlatforms: preference.preferredPlatforms,
+        preferredContentTypes: preference.preferredContentTypes,
+        notes: preference.notes ?? "",
+      })),
+    specialRequests: specialRequests
+      .filter((r) => memberIdsInSection.has(r.targetUserId))
+      .map<SpecialRequest>((request) => ({
+        id: request.id,
+        memberId: request.targetUserId,
+        createdById: request.createdById ?? undefined,
+        title: request.title,
+        prompt: request.prompt,
+        role: request.role,
+        platform: request.platform ?? undefined,
+        dueAt: request.dueAt?.toISOString(),
+        status: request.status,
+        responseNote: request.responseNote ?? "",
+        createdAt: request.createdAt.toLocaleString(),
+      })),
+  };
+}
+
+/** Fetch everything an operator (owner/operations_lead) is allowed to see */
+export async function getOperatorDashboardData(): Promise<OperatorDashboardData> {
+  const [base, invites, reminderPreferences, specialRequests] = await Promise.all([
+    getMemberDashboardData(),
+    prisma.onboardingInvite.findMany({
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.reminderPreference.findMany({
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.specialRequest.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+  ]);
+
+  return {
+    ...base,
+    invites: invites.map<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>((invite) => ({
       id: invite.id,
-      token: invite.token,
       label: invite.label,
       createdByRole: "operations",
       createdAt: invite.createdAt.toLocaleString(),
@@ -152,19 +233,6 @@ export async function getDashboardData() {
       preferredPlatforms: preference.preferredPlatforms,
       preferredContentTypes: preference.preferredContentTypes,
       notes: preference.notes ?? "",
-    })),
-    workSubmissions: workSubmissions.map<WorkSubmission>((submission) => ({
-      id: submission.id,
-      memberId: submission.userId,
-      title: submission.title,
-      workDate: submission.workDate.toISOString().slice(0, 10),
-      platform: submission.platform,
-      contentType: submission.contentType,
-      memberRole: submission.memberRole,
-      description: submission.description,
-      assetUrl: submission.assetUrl ?? "",
-      skills: submission.skills,
-      notable: submission.notable,
     })),
     specialRequests: specialRequests.map<SpecialRequest>((request) => ({
       id: request.id,

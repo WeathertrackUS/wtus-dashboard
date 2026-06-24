@@ -187,3 +187,25 @@ export interface SpecialRequest {
   responseNote: string;
   createdAt: string;
 }
+
+/** What a regular member sees — no tokens, no other users' private data */
+export interface MemberDashboardData {
+  members: Pick<Member, "id" | "name" | "handle" | "sections">[];
+  tasks: Task[];
+  availability: AvailabilityWindow[];
+  recurringSchedules: RecurringSchedule[];
+  liveEvents: LiveEvent[];
+  coverage: TemporaryCoverage[];
+  workSubmissions: WorkSubmission[];
+}
+
+/** What a section lead sees — everything a member sees, plus section coordination data */
+export interface LeadDashboardData extends MemberDashboardData {
+  reminderPreferences: ReminderPreference[];
+  specialRequests: SpecialRequest[];
+}
+
+/** What an operator sees — everything a lead sees, plus admin fields */
+export interface OperatorDashboardData extends LeadDashboardData {
+  invites: Array<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>;
+}
