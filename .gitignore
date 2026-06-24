@@ -8,6 +8,7 @@ dist/
 build/
 out/
 src/generated/prisma/
+tsconfig.tsbuildinfo
 
 # Environment
 .env

@@ -7,7 +7,8 @@ const STATE_NONCE = "browser-bound-state-nonce";
 
 const mockPrismaUserUpsert = vi.fn();
 const mockPrismaSessionCreate = vi.fn();
-const mockFetch = vi.fn();
+const mockAuthorizationCodeGrant = vi.fn();
+const mockGetOidcConfig = vi.fn();
 
 vi.mock("../src/db", () => ({
   get prisma() {
@@ -26,24 +27,21 @@ vi.mock("../src/db", () => ({
   },
 }));
 
-function buildJwt(payload: Record<string, unknown>) {
-  const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  return `${header}.${body}.signature`;
-}
-
-function mockSuccessfulTokenExchange(sub = "user-123") {
-  mockFetch.mockResolvedValue({
-    ok: true,
-    json: async () => ({
-      id_token: buildJwt({
-        sub,
-        email: "member@example.com",
-        preferred_username: "member",
-      }),
-    }),
-  });
-}
+vi.mock("../src/lib/oidc", () => ({
+  getOidcConfig: (...args: unknown[]) => mockGetOidcConfig(...args),
+  authorizationCodeGrant: (...args: unknown[]) => mockAuthorizationCodeGrant(...args),
+  buildAuthorizationUrl: vi.fn(
+    (_config: unknown, params: Record<string, string>) => {
+      const url = new URL("https://auth.weathertrackus.com/authorize");
+      for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, value);
+      }
+      return url.toString();
+    },
+  ),
+  randomPKCECodeVerifier: vi.fn(() => "mock-code-verifier"),
+  calculatePKCECodeChallenge: vi.fn(() => Promise.resolve("mock-challenge")),
+}));
 
 async function createBoundState(callbackPath: string) {
   return createOAuthStateForNonce(callbackPath, AUTH_SECRET, STATE_NONCE);
@@ -51,7 +49,9 @@ async function createBoundState(callbackPath: string) {
 
 function callbackRequest(url: string, includeStateCookie = true) {
   return new Request(url, {
-    headers: includeStateCookie ? { cookie: `wtus-oauth-state=${STATE_NONCE}` } : undefined,
+    headers: includeStateCookie
+      ? { cookie: `wtus-oauth-state=${STATE_NONCE}; oidc_pkce=mock-pkce-verifier` }
+      : undefined,
   });
 }
 
@@ -64,15 +64,29 @@ describe("wtus-auth callback redirect", () => {
 
     mockPrismaUserUpsert.mockResolvedValue({ id: "db-user-1" });
     mockPrismaSessionCreate.mockResolvedValue({ id: "session-1" });
-    mockFetch.mockReset();
-    mockSuccessfulTokenExchange();
+    mockAuthorizationCodeGrant.mockReset();
+    mockGetOidcConfig.mockReset();
 
-    vi.stubGlobal("fetch", mockFetch);
+    mockGetOidcConfig.mockResolvedValue({
+      _redirectUri: `${APP_BASE}/api/auth/callback/wtus-auth`,
+      serverMetadata: () => ({
+        issuer: "https://auth.weathertrackus.com",
+      }),
+    });
+
+    mockAuthorizationCodeGrant.mockResolvedValue({
+      claims: () => ({
+        sub: "user-123",
+        email: "member@example.com",
+        preferred_username: "member",
+        wtus_member: true,
+      }),
+      id_token: "mock-id-token",
+    });
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
   });
 
   it("redirects to the path bound in signed OAuth state", async () => {
@@ -113,7 +127,7 @@ describe("wtus-auth callback redirect", () => {
 
     expect(missingState.headers.get("location")).toBe(`${APP_BASE}/?error=OAuthCallback`);
     expect(tamperedState.headers.get("location")).toBe(`${APP_BASE}/?error=OAuthCallback`);
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockAuthorizationCodeGrant).not.toHaveBeenCalled();
   });
 
   it("rejects valid state when the browser-bound nonce cookie is missing", async () => {
@@ -128,7 +142,7 @@ describe("wtus-auth callback redirect", () => {
     );
 
     expect(response.headers.get("location")).toBe(`${APP_BASE}/?error=OAuthCallback`);
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockAuthorizationCodeGrant).not.toHaveBeenCalled();
   });
 
   it("rejects unsafe callbackUrl input even when its sanitized fallback matches state", async () => {
@@ -142,7 +156,7 @@ describe("wtus-auth callback redirect", () => {
     );
 
     expect(response.headers.get("location")).toBe(`${APP_BASE}/?error=OAuthCallback`);
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockAuthorizationCodeGrant).not.toHaveBeenCalled();
   });
 
   it("falls back to / for unsafe destinations embedded in state", async () => {
@@ -162,7 +176,15 @@ describe("auth login route", () => {
     vi.resetModules();
     vi.stubEnv("AUTH_SECRET", AUTH_SECRET);
     vi.stubEnv("APP_URL", APP_BASE);
-    vi.stubEnv("WTUS_AUTH_URL", "https://auth.weathertrackus.com");
+    vi.stubEnv("WTUS_DASHBOARD_OIDC_CLIENT_SECRET", "test-secret");
+
+    mockGetOidcConfig.mockReset();
+    mockGetOidcConfig.mockResolvedValue({
+      _redirectUri: `${APP_BASE}/api/auth/callback/wtus-auth`,
+      serverMetadata: () => ({
+        issuer: "https://auth.weathertrackus.com",
+      }),
+    });
   });
 
   afterEach(() => {
@@ -180,11 +202,7 @@ describe("auth login route", () => {
     expect(location).toBeTruthy();
 
     const loginUrl = new URL(location!);
-    const returnTo = loginUrl.searchParams.get("returnTo");
-    expect(returnTo).toBeTruthy();
-
-    const authorizeUrl = new URL(returnTo!);
-    const state = authorizeUrl.searchParams.get("state");
+    const state = loginUrl.searchParams.get("state");
     expect(state).toBeTruthy();
 
     const { verifyOAuthState } = await import("../src/server/safe-redirect");
