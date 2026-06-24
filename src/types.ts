@@ -199,9 +199,13 @@ export interface MemberDashboardData {
   workSubmissions: WorkSubmission[];
 }
 
-/** What an operator sees — everything a member sees, plus admin fields */
-export interface OperatorDashboardData extends MemberDashboardData {
-  invites: Array<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>;
+/** What a section lead sees — everything a member sees, plus section coordination data */
+export interface LeadDashboardData extends MemberDashboardData {
   reminderPreferences: ReminderPreference[];
   specialRequests: SpecialRequest[];
+}
+
+/** What an operator sees — everything a lead sees, plus admin fields */
+export interface OperatorDashboardData extends LeadDashboardData {
+  invites: Array<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>;
 }

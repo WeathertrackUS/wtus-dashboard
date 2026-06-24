@@ -12,6 +12,7 @@ import type {
   Task,
   TemporaryCoverage,
   WorkSubmission,
+  LeadDashboardData,
   MemberDashboardData,
   OperatorDashboardData,
 } from "../types";
@@ -135,13 +136,10 @@ export async function getMemberDashboardData(): Promise<MemberDashboardData> {
   };
 }
 
-/** Fetch everything an operator (owner/operations_lead) is allowed to see */
-export async function getOperatorDashboardData(): Promise<OperatorDashboardData> {
-  const [base, invites, reminderPreferences, specialRequests] = await Promise.all([
+/** Fetch everything a section lead is allowed to see — member data plus coordination fields */
+export async function getLeadDashboardData(): Promise<LeadDashboardData> {
+  const [base, reminderPreferences, specialRequests] = await Promise.all([
     getMemberDashboardData(),
-    prisma.onboardingInvite.findMany({
-      orderBy: { createdAt: "desc" },
-    }),
     prisma.reminderPreference.findMany({
       orderBy: { updatedAt: "desc" },
     }),
@@ -153,14 +151,6 @@ export async function getOperatorDashboardData(): Promise<OperatorDashboardData>
 
   return {
     ...base,
-    invites: invites.map<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>((invite) => ({
-      id: invite.id,
-      label: invite.label,
-      createdByRole: "operations",
-      createdAt: invite.createdAt.toLocaleString(),
-      status: invite.status,
-      memberId: invite.usedByUserId ?? undefined,
-    })),
     reminderPreferences: reminderPreferences.map<ReminderPreference>((preference) => ({
       id: preference.id,
       memberId: preference.userId,
@@ -187,6 +177,28 @@ export async function getOperatorDashboardData(): Promise<OperatorDashboardData>
       status: request.status,
       responseNote: request.responseNote ?? "",
       createdAt: request.createdAt.toLocaleString(),
+    })),
+  };
+}
+
+/** Fetch everything an operator (owner/operations_lead) is allowed to see */
+export async function getOperatorDashboardData(): Promise<OperatorDashboardData> {
+  const [base, invites] = await Promise.all([
+    getLeadDashboardData(),
+    prisma.onboardingInvite.findMany({
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
+  return {
+    ...base,
+    invites: invites.map<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>((invite) => ({
+      id: invite.id,
+      label: invite.label,
+      createdByRole: "operations",
+      createdAt: invite.createdAt.toLocaleString(),
+      status: invite.status,
+      memberId: invite.usedByUserId ?? undefined,
     })),
   };
 }
