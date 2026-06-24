@@ -22,7 +22,6 @@ export async function getMemberDashboardData(): Promise<MemberDashboardData> {
     prisma.user.findMany({
       orderBy: { createdAt: "desc" },
       include: {
-        globalRoles: { include: { role: true } },
         sectionMemberships: { include: { section: true } },
       },
     }),
