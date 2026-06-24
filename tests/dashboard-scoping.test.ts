@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { OnboardingInvite } from "../src/types";
 
 const mockPrismaFindMany = vi.fn();
@@ -21,6 +21,18 @@ vi.mock("../src/db", () => ({
 
 vi.mock("../src/server/leantime", () => ({
   fetchLeantimeTasks: vi.fn().mockResolvedValue({ configured: false, tasks: [] }),
+}));
+
+const mockRequireCurrentUser = vi.fn();
+const mockIsGlobalOperator = vi.fn();
+
+vi.mock("../src/server/permissions", () => ({
+  get requireCurrentUser() {
+    return (...args: unknown[]) => mockRequireCurrentUser(...args);
+  },
+  get isGlobalOperator() {
+    return (...args: unknown[]) => mockIsGlobalOperator(...args);
+  },
 }));
 
 function stubUser(overrides?: { sectionKey?: string }) {
@@ -95,17 +107,28 @@ function stubSpecialRequest() {
   };
 }
 
+function stubAllEmpty() {
+  mockPrismaFindMany.mockImplementation((table: string) => {
+    if (table === "user") return Promise.resolve([stubUser()]);
+    if (table === "availabilityWindow") return Promise.resolve([]);
+    if (table === "workSubmission") return Promise.resolve([]);
+    if (table === "temporaryRoleCoverage") return Promise.resolve([]);
+    if (table === "liveEvent") return Promise.resolve([]);
+    if (table === "recurringAvailability") return Promise.resolve([]);
+    if (table === "onboardingInvite") return Promise.resolve([]);
+    if (table === "reminderPreference") return Promise.resolve([]);
+    if (table === "specialRequest") return Promise.resolve([]);
+    return Promise.resolve([]);
+  });
+}
+
 describe("dashboard data scoping", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("member payload excludes invites, reminderPreferences, and specialRequests", async () => {
-    mockPrismaFindMany.mockImplementation((table: string) => {
-      if (table === "user") return Promise.resolve([stubUser()]);
-      if (table === "availabilityWindow") return Promise.resolve([stubAvailabilityWindow()]);
-      if (table === "workSubmission") return Promise.resolve([]);
-      if (table === "temporaryRoleCoverage") return Promise.resolve([]);
-      if (table === "liveEvent") return Promise.resolve([]);
-      if (table === "recurringAvailability") return Promise.resolve([]);
-      return Promise.resolve([]);
-    });
+    stubAllEmpty();
 
     const { getMemberDashboardData } = await import("../src/server/dashboard-data");
     const data = await getMemberDashboardData();
@@ -124,15 +147,7 @@ describe("dashboard data scoping", () => {
   });
 
   it("member payload strips token and discordUserId from member objects", async () => {
-    mockPrismaFindMany.mockImplementation((table: string) => {
-      if (table === "user") return Promise.resolve([stubUser()]);
-      if (table === "availabilityWindow") return Promise.resolve([]);
-      if (table === "workSubmission") return Promise.resolve([]);
-      if (table === "temporaryRoleCoverage") return Promise.resolve([]);
-      if (table === "liveEvent") return Promise.resolve([]);
-      if (table === "recurringAvailability") return Promise.resolve([]);
-      return Promise.resolve([]);
-    });
+    stubAllEmpty();
 
     const { getMemberDashboardData } = await import("../src/server/dashboard-data");
     const data = await getMemberDashboardData();
@@ -196,5 +211,70 @@ describe("dashboard data scoping", () => {
     expect(data).toHaveProperty("specialRequests");
     expect(data.reminderPreferences).toHaveLength(1);
     expect(data.specialRequests).toHaveLength(1);
+  });
+});
+
+describe("API route role-based branching", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls getMemberDashboardData for member role", async () => {
+    mockRequireCurrentUser.mockResolvedValue({
+      access: { userId: "u1", globalRoles: ["member"], sections: [] },
+    });
+    mockIsGlobalOperator.mockReturnValue(false);
+    stubAllEmpty();
+
+    const { GET } = await import("../app/api/dashboard/route");
+    const response = await GET();
+    const data = await response.json();
+
+    expect(data).not.toHaveProperty("invites");
+    expect(data).not.toHaveProperty("reminderPreferences");
+    expect(data).not.toHaveProperty("specialRequests");
+  });
+
+  it("calls getOperatorDashboardData for operator role", async () => {
+    mockRequireCurrentUser.mockResolvedValue({
+      access: { userId: "u1", globalRoles: ["owner"], sections: [] },
+    });
+    mockIsGlobalOperator.mockReturnValue(true);
+    stubAllEmpty();
+
+    const { GET } = await import("../app/api/dashboard/route");
+    const response = await GET();
+    const data = await response.json();
+
+    expect(data).toHaveProperty("invites");
+    expect(data).toHaveProperty("reminderPreferences");
+    expect(data).toHaveProperty("specialRequests");
+  });
+});
+
+describe("isGlobalOperator", () => {
+  it("returns true for owner role", () => {
+    const access = { userId: "u1", globalRoles: ["owner"], sections: [] as never[] };
+    expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(true);
+  });
+
+  it("returns true for operations_lead role", () => {
+    const access = { userId: "u1", globalRoles: ["operations_lead"], sections: [] as never[] };
+    expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(true);
+  });
+
+  it("returns true when user has both owner and member roles", () => {
+    const access = { userId: "u1", globalRoles: ["owner", "member"], sections: [] as never[] };
+    expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(true);
+  });
+
+  it("returns false for member role only", () => {
+    const access = { userId: "u1", globalRoles: ["member"], sections: [] as never[] };
+    expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(false);
+  });
+
+  it("returns false for empty roles", () => {
+    const access = { userId: "u1", globalRoles: [], sections: [] as never[] };
+    expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(false);
   });
 });
