@@ -1,23 +1,26 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../../src/db";
-import { requireGlobalOperator } from "../../../../../src/server/permissions";
+import { deriveCreatedByRole, requireGlobalOperator } from "../../../../../src/server/permissions";
 import type { OnboardingInvite } from "../../../../../src/types";
 
 const allowedStatuses = ["open", "disabled"] as const;
 
-function toInvite(invite: {
-  id: string;
-  token: string;
-  label: string;
-  status: "open" | "used" | "disabled";
-  createdAt: Date;
-  usedByUserId: string | null;
-}): OnboardingInvite {
+function toInvite(
+  invite: {
+    id: string;
+    token: string;
+    label: string;
+    status: "open" | "used" | "disabled";
+    createdAt: Date;
+    usedByUserId: string | null;
+    createdBy?: { globalRoles: Array<{ role: { key: string } }> } | null;
+  },
+): OnboardingInvite {
   return {
     id: invite.id,
     token: invite.token,
     label: invite.label,
-    createdByRole: "operations",
+    createdByRole: deriveCreatedByRole(invite.createdBy?.globalRoles.map((gr) => gr.role.key) ?? []),
     createdAt: invite.createdAt.toISOString(),
     status: invite.status,
     memberId: invite.usedByUserId ?? undefined,
@@ -39,6 +42,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ invit
   const invite = await prisma.onboardingInvite.update({
     where: { id: inviteId },
     data: { status },
+    include: { createdBy: { include: { globalRoles: { include: { role: true } } } } },
   });
 
   return NextResponse.json({ invite: toInvite(invite) });

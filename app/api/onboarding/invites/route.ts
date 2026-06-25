@@ -1,22 +1,25 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../src/db";
-import { requireGlobalOperator } from "../../../../src/server/permissions";
+import { deriveCreatedByRole, requireGlobalOperator } from "../../../../src/server/permissions";
 import type { OnboardingInvite } from "../../../../src/types";
 
-function toInvite(invite: {
-  id: string;
-  token: string;
-  label: string;
-  status: "open" | "used" | "disabled";
-  createdAt: Date;
-  usedByUserId: string | null;
-}): OnboardingInvite {
+function toInvite(
+  invite: {
+    id: string;
+    token: string;
+    label: string;
+    status: "open" | "used" | "disabled";
+    createdAt: Date;
+    usedByUserId: string | null;
+  },
+  createdByGlobalRoles: string[],
+): OnboardingInvite {
   return {
     id: invite.id,
     token: invite.token,
     label: invite.label,
-    createdByRole: "operations",
+    createdByRole: deriveCreatedByRole(createdByGlobalRoles),
     createdAt: invite.createdAt.toISOString(),
     status: invite.status,
     memberId: invite.usedByUserId ?? undefined,
@@ -37,5 +40,5 @@ export async function POST(request: Request) {
     },
   });
 
-  return NextResponse.json({ invite: toInvite(invite) }, { status: 201 });
+  return NextResponse.json({ invite: toInvite(invite, access.access.globalRoles) }, { status: 201 });
 }

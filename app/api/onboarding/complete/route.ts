@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../src/db";
-import { requireDiscordVerifiedUser } from "../../../../src/server/permissions";
+import { deriveCreatedByRole, requireDiscordVerifiedUser } from "../../../../src/server/permissions";
 import type { Member, SectionKey } from "../../../../src/types";
 
 const sectionKeys: SectionKey[] = ["finance", "forecasting", "nowcasting", "youtube", "graphics", "facebook", "development", "verification"];
@@ -73,6 +73,7 @@ export async function POST(request: Request) {
             usedByUserId: user.id,
             usedAt: new Date(),
           },
+          include: { createdBy: { include: { globalRoles: { include: { role: true } } } } },
         })
       : null;
 
@@ -91,7 +92,7 @@ export async function POST(request: Request) {
             id: usedInvite.id,
             token: usedInvite.token,
             label: usedInvite.label,
-            createdByRole: "operations" as const,
+            createdByRole: deriveCreatedByRole(usedInvite.createdBy?.globalRoles.map((gr) => gr.role.key) ?? []),
             createdAt: usedInvite.createdAt.toISOString(),
             status: "used" as const,
             memberId: user.id,

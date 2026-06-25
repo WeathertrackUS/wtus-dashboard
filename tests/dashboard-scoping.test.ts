@@ -26,14 +26,18 @@ vi.mock("../src/server/leantime", () => ({
 const mockRequireCurrentUser = vi.fn();
 const mockIsGlobalOperator = vi.fn();
 
-vi.mock("../src/server/permissions", () => ({
-  get requireCurrentUser() {
-    return (...args: unknown[]) => mockRequireCurrentUser(...args);
-  },
-  get isGlobalOperator() {
-    return (...args: unknown[]) => mockIsGlobalOperator(...args);
-  },
-}));
+vi.mock("../src/server/permissions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/server/permissions")>();
+  return {
+    ...actual,
+    get requireCurrentUser() {
+      return (...args: unknown[]) => mockRequireCurrentUser(...args);
+    },
+    get isGlobalOperator() {
+      return (...args: unknown[]) => mockIsGlobalOperator(...args);
+    },
+  };
+});
 
 function stubUser(overrides?: { sectionKey?: string }) {
   return {
@@ -71,6 +75,30 @@ function stubInvite(): OnboardingInvite {
     createdByRole: "operations",
     createdAt: "1/1/2026",
     status: "open",
+  };
+}
+
+function stubInviteFromOperationsLead() {
+  return {
+    id: "inv1",
+    token: "secret-token-abc",
+    label: "New member invite",
+    status: "open" as const,
+    createdAt: new Date("2026-01-01T10:00:00Z"),
+    usedByUserId: null,
+    createdBy: { globalRoles: [{ role: { key: "operations_lead" } }] },
+  };
+}
+
+function stubInviteFromOwner() {
+  return {
+    id: "inv2",
+    token: "secret-token-def",
+    label: "Owner invite",
+    status: "open" as const,
+    createdAt: new Date("2026-01-02T10:00:00Z"),
+    usedByUserId: null,
+    createdBy: { globalRoles: [{ role: { key: "owner" } }] },
   };
 }
 
@@ -172,7 +200,7 @@ describe("dashboard data scoping", () => {
       if (table === "temporaryRoleCoverage") return Promise.resolve([]);
       if (table === "liveEvent") return Promise.resolve([]);
       if (table === "recurringAvailability") return Promise.resolve([]);
-      if (table === "onboardingInvite") return Promise.resolve([stubInvite()]);
+      if (table === "onboardingInvite") return Promise.resolve([stubInviteFromOperationsLead()]);
       if (table === "reminderPreference") return Promise.resolve([]);
       if (table === "specialRequest") return Promise.resolve([]);
       return Promise.resolve([]);
@@ -186,7 +214,51 @@ describe("dashboard data scoping", () => {
     expect(invite).toHaveProperty("id", "inv1");
     expect(invite).toHaveProperty("label", "New member invite");
     expect(invite).toHaveProperty("status", "open");
+    expect(invite).toHaveProperty("createdByRole", "operations");
     expect(invite).not.toHaveProperty("token");
+  });
+
+  it("operator payload derives createdByRole as 'owner' for owner-created invites", async () => {
+    mockPrismaFindMany.mockImplementation((table: string) => {
+      if (table === "user") return Promise.resolve([stubUser()]);
+      if (table === "availabilityWindow") return Promise.resolve([]);
+      if (table === "workSubmission") return Promise.resolve([]);
+      if (table === "temporaryRoleCoverage") return Promise.resolve([]);
+      if (table === "liveEvent") return Promise.resolve([]);
+      if (table === "recurringAvailability") return Promise.resolve([]);
+      if (table === "onboardingInvite") return Promise.resolve([stubInviteFromOwner()]);
+      if (table === "reminderPreference") return Promise.resolve([]);
+      if (table === "specialRequest") return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    const { getOperatorDashboardData } = await import("../src/server/dashboard-data");
+    const data = await getOperatorDashboardData();
+
+    expect(data.invites).toHaveLength(1);
+    expect(data.invites[0]).toHaveProperty("createdByRole", "owner");
+  });
+
+  it("operator payload derives different createdByRole per invite creator", async () => {
+    mockPrismaFindMany.mockImplementation((table: string) => {
+      if (table === "user") return Promise.resolve([stubUser()]);
+      if (table === "availabilityWindow") return Promise.resolve([]);
+      if (table === "workSubmission") return Promise.resolve([]);
+      if (table === "temporaryRoleCoverage") return Promise.resolve([]);
+      if (table === "liveEvent") return Promise.resolve([]);
+      if (table === "recurringAvailability") return Promise.resolve([]);
+      if (table === "onboardingInvite") return Promise.resolve([stubInviteFromOwner(), stubInviteFromOperationsLead()]);
+      if (table === "reminderPreference") return Promise.resolve([]);
+      if (table === "specialRequest") return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    const { getOperatorDashboardData } = await import("../src/server/dashboard-data");
+    const data = await getOperatorDashboardData();
+
+    expect(data.invites).toHaveLength(2);
+    expect(data.invites[0]).toHaveProperty("createdByRole", "owner");
+    expect(data.invites[1]).toHaveProperty("createdByRole", "operations");
   });
 
   it("operator payload includes all admin fields", async () => {
