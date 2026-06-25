@@ -1,5 +1,6 @@
 import { prisma } from "../db";
 import { fetchLeantimeTasks } from "./leantime";
+import { deriveCreatedByRole } from "./permissions";
 import type {
   AvailabilityWindow,
   LiveEvent,
@@ -200,6 +201,7 @@ export async function getOperatorDashboardData(): Promise<OperatorDashboardData>
     getMemberDashboardData(),
     prisma.onboardingInvite.findMany({
       orderBy: { createdAt: "desc" },
+      include: { createdBy: { include: { globalRoles: { include: { role: true } } } } },
     }),
     prisma.reminderPreference.findMany({
       orderBy: { updatedAt: "desc" },
@@ -215,7 +217,7 @@ export async function getOperatorDashboardData(): Promise<OperatorDashboardData>
     invites: invites.map<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>((invite) => ({
       id: invite.id,
       label: invite.label,
-      createdByRole: "operations",
+      createdByRole: deriveCreatedByRole(invite.createdBy?.globalRoles.map((gr) => gr.role.key) ?? []),
       createdAt: invite.createdAt.toISOString(),
       status: invite.status,
       memberId: invite.usedByUserId ?? undefined,

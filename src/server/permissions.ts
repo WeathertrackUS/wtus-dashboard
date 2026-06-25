@@ -96,3 +96,7 @@ export async function requireGlobalOperator(): Promise<AccessResult> {
 
   return result;
 }
+
+export function deriveCreatedByRole(globalRoles: string[]): "owner" | "operations" {
+  return globalRoles.includes("owner") ? "owner" : "operations";
+}
