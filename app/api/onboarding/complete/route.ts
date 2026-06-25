@@ -92,7 +92,7 @@ export async function POST(request: Request) {
             token: usedInvite.token,
             label: usedInvite.label,
             createdByRole: "operations" as const,
-            createdAt: usedInvite.createdAt.toLocaleString(),
+            createdAt: usedInvite.createdAt.toISOString(),
             status: "used" as const,
             memberId: user.id,
           }

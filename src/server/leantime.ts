@@ -163,7 +163,7 @@ async function mergeDashboardMetadata(tasks: Task[]) {
         userId: comment.userId ?? undefined,
         authorName: comment.user?.name ?? comment.user?.handle ?? comment.user?.discordHandle ?? "Team",
         body: comment.body,
-        createdAt: comment.createdAt.toLocaleString(),
+        createdAt: comment.createdAt.toISOString(),
       })),
     };
   });
@@ -297,6 +297,6 @@ export async function addLeantimeTaskComment(taskId: string, body: string) {
     userId: comment.userId ?? undefined,
     authorName: comment.user?.name ?? comment.user?.handle ?? comment.user?.discordHandle ?? "Team",
     body,
-    createdAt: comment.createdAt.toLocaleString(),
+    createdAt: comment.createdAt.toISOString(),
   } satisfies TaskComment;
 }

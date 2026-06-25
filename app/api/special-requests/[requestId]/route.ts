@@ -39,7 +39,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ re
       dueAt: specialRequest.dueAt?.toISOString(),
       status: specialRequest.status,
       responseNote: specialRequest.responseNote ?? "",
-      createdAt: specialRequest.createdAt.toLocaleString(),
+      createdAt: specialRequest.createdAt.toISOString(),
     },
   });
 }

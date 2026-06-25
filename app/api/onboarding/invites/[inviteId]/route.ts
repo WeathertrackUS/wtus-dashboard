@@ -18,7 +18,7 @@ function toInvite(invite: {
     token: invite.token,
     label: invite.label,
     createdByRole: "operations",
-    createdAt: invite.createdAt.toLocaleString(),
+    createdAt: invite.createdAt.toISOString(),
     status: invite.status,
     memberId: invite.usedByUserId ?? undefined,
   };
