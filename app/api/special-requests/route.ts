@@ -15,7 +15,7 @@ function toSpecialRequest(request: Awaited<ReturnType<typeof prisma.specialReque
     dueAt: request.dueAt?.toISOString(),
     status: request.status,
     responseNote: request.responseNote ?? "",
-    createdAt: request.createdAt.toLocaleString(),
+    createdAt: request.createdAt.toISOString(),
   };
 }
 

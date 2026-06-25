@@ -1022,7 +1022,7 @@ function TasksView({
       id: `c${Date.now()}`,
       taskId: selectedTask.id,
       body,
-      createdAt: new Date().toLocaleString(),
+      createdAt: new Date().toISOString(),
     };
     let comment = fallbackComment;
     try {
@@ -1972,7 +1972,7 @@ function EventsView({
     const form = new FormData(formElement);
     const body = String(form.get("body") || "").trim();
     if (!body) return;
-    const newUpdate = { id: `eu${Date.now()}`, body, createdAt: new Date().toLocaleString() };
+    const newUpdate = { id: `eu${Date.now()}`, body, createdAt: new Date().toISOString() };
     const updated: LiveEvent = { ...activeEv, updates: [newUpdate, ...(activeEv.updates ?? [])] };
     setEvents((current) => current.map((e) => (e.id === activeEv.id ? updated : e)));
     try {
@@ -2884,7 +2884,7 @@ function WorkflowView({
       dueAt: String(form.get("dueAt") || ""),
       status: "open",
       responseNote: "",
-      createdAt: new Date().toLocaleString(),
+      createdAt: new Date().toISOString(),
     };
     let specialRequest = fallbackRequest;
     try {
@@ -3141,7 +3141,7 @@ function AdminView({
       token: globalThis.crypto?.randomUUID?.() ?? `invite-${Date.now()}`,
       label: String(form.get("label") || "New member"),
       createdByRole: role === "owner" ? "owner" : "operations",
-      createdAt: new Date().toLocaleString(),
+      createdAt: new Date().toISOString(),
       status: "open",
     };
     let invite = fallbackInvite;

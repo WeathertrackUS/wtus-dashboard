@@ -216,7 +216,7 @@ export async function getOperatorDashboardData(): Promise<OperatorDashboardData>
       id: invite.id,
       label: invite.label,
       createdByRole: "operations",
-      createdAt: invite.createdAt.toLocaleString(),
+      createdAt: invite.createdAt.toISOString(),
       status: invite.status,
       memberId: invite.usedByUserId ?? undefined,
     })),
@@ -245,7 +245,7 @@ export async function getOperatorDashboardData(): Promise<OperatorDashboardData>
       dueAt: request.dueAt?.toISOString(),
       status: request.status,
       responseNote: request.responseNote ?? "",
-      createdAt: request.createdAt.toLocaleString(),
+      createdAt: request.createdAt.toISOString(),
     })),
   };
 }
