@@ -28,7 +28,7 @@ Recommended:
 - App server: Next.js standalone output managed by systemd
 - Reverse proxy: Nginx
 - Database: PostgreSQL
-- ORM: Prisma or Drizzle
+- ORM: Prisma
 - Auth: Auth.js with Discord OAuth
 - Bot: Discord.js as a separate process in the same repo
 
@@ -85,42 +85,37 @@ https://your-domain.example/api/auth/callback/discord
 
 ## Deployment Flow
 
-Initial simple flow:
-
-1. Push changes to the repository.
-2. Pull latest changes on the VPS.
-3. Install dependencies.
-4. Run production database migrations.
-5. Build the app.
-6. Restart the app service.
-7. Restart the Discord bot service if bot code changed.
-8. Confirm the health page, login, and bot status work.
-
-### GitHub Actions deploy
-
-The repo now includes `.github/workflows/deploy.yml` for push-to-`main` deploys and manual runs.
-
-Required GitHub secrets:
-
-- `WTUS_VPS_HOST`
-- `WTUS_VPS_USER`
-- `WTUS_VPS_SSH_KEY`
-
-The workflow:
-
-1. Syncs the repository to `/opt/wtus-dashboard` on the VPS.
-2. Runs `pnpm install --frozen-lockfile`.
-3. Runs `pnpm db:deploy`.
-4. Builds the app with `pnpm build`.
-5. Copies the standalone static assets into place.
-6. Restarts `wtus-dashboard` and `wtus-bot`.
-7. Verifies the dashboard service is active.
-
-The production migration command is:
+Deploy from a local checkout by SSHing into the VPS and running each step manually:
 
 ```bash
-pnpm db:deploy
+# 1. Pull latest changes
+ssh root@YOUR_VPS "cd /opt/wtus-dashboard && git pull"
+
+# 2. Install dependencies
+ssh root@YOUR_VPS "cd /opt/wtus-dashboard && pnpm install --frozen-lockfile"
+
+# 3. Run database migrations
+ssh root@YOUR_VPS "cd /opt/wtus-dashboard && pnpm db:deploy"
+
+# 4. Build the app (generates Prisma client and Next.js standalone output)
+ssh root@YOUR_VPS "cd /opt/wtus-dashboard && pnpm build"
+
+# 5. Copy static assets into standalone output
+ssh root@YOUR_VPS "cd /opt/wtus-dashboard && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public"
+
+# 6. Restart both services
+ssh root@YOUR_VPS "systemctl restart wtus-dashboard wtus-bot"
+
+# 7. Verify both services are active
+ssh root@YOUR_VPS "systemctl is-active wtus-dashboard && systemctl is-active wtus-bot"
+
+# 8. Verify the app responds to HTTP
+ssh root@YOUR_VPS "curl -s -o /dev/null -w '%{http_code}' http://localhost:3000"
 ```
+
+The HTTP check returns a status code (e.g. `401` for unauthenticated requests). Any response confirms the server is running and serving traffic.
+
+Do not upload `.env` or `.env.production` from your workstation. Environment files should already exist on the VPS from the initial setup.
 
 ## First Owner / Operations Lead
 
@@ -160,8 +155,6 @@ Starter service and proxy templates live in `deploy/`:
 - `deploy/nginx.conf.example`
 
 Copy them to the VPS, adjust paths, user, and domain, then enable the services with systemd.
-
-Automation can come later after the app is stable.
 
 ## Security Notes
 
