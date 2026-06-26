@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
 import { getMemberDashboardData, getLeadDashboardData, getOperatorDashboardData } from "../../../src/server/dashboard-data";
 import { requireCurrentUser, isGlobalOperator } from "../../../src/server/permissions";
+import { apiError } from "../../../src/server/api-response";
 
 function isSectionLead(access: { sections: Array<{ role: string }> }) {
   return access.sections.some((s) => s.role === "lead");
@@ -16,8 +16,8 @@ export async function GET() {
       : isSectionLead(result.access)
         ? await getLeadDashboardData(result.access.sections)
         : await getMemberDashboardData();
-    return NextResponse.json(data);
+    return Response.json(data);
   } catch {
-    return NextResponse.json({ error: "Dashboard data is unavailable" }, { status: 503 });
+    return apiError("Dashboard data is unavailable", 503);
   }
 }

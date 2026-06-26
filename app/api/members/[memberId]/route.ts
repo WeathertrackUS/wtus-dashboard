@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import { prisma } from "../../../../src/db";
 import { isGlobalOperator, requireCurrentUser } from "../../../../src/server/permissions";
+import { UpdateMemberSchema } from "../../../../src/server/schemas";
+import { parseBody, handleApiError } from "../../../../src/server/validation";
+import { apiError } from "../../../../src/server/api-response";
 import type { Member, SectionKey } from "../../../../src/types";
 import type { GlobalRoleKey } from "../../../../src/generated/prisma/enums";
-
-const sectionKeys: SectionKey[] = ["finance", "forecasting", "nowcasting", "youtube", "graphics", "facebook", "development", "verification"];
 
 const botSyncPort = process.env.DISCORD_BOT_SYNC_PORT ?? "3001";
 const botSyncSecret = process.env.DISCORD_BOT_SYNC_SECRET;
@@ -51,108 +51,97 @@ export async function PATCH(request: Request, context: { params: Promise<{ membe
 
   const { memberId } = await context.params;
   if (!isGlobalOperator(access.access) && memberId !== access.access.userId) {
-    return NextResponse.json({ error: "Account access required" }, { status: 403 });
+    return apiError("Account access required", 403);
   }
 
-  const body = (await request.json().catch(() => null)) as {
-    name?: string;
-    handle?: string;
-    discordUserId?: string;
-    section?: string;
-    sectionRole?: string | null;
-    globalRole?: string;
-    sections?: unknown;
-  } | null;
+  const parsed = await parseBody(UpdateMemberSchema, request);
+  if ("error" in parsed) return parsed.error;
 
+  const body = parsed.data;
   const isOperator = isGlobalOperator(access.access);
 
   if (!isOperator) {
     const attemptedPrivilegedFields = OPERATOR_ONLY_FIELDS.filter(
-      (field) => body != null && field in body && (body as Record<string, unknown>)[field] !== undefined,
+      (field) => field in body && (body as Record<string, unknown>)[field] !== undefined,
     );
     if (attemptedPrivilegedFields.length > 0) {
-      return NextResponse.json(
-        { error: `Not authorized to modify: ${attemptedPrivilegedFields.join(", ")}` },
-        { status: 403 },
-      );
+      return apiError(`Not authorized to modify: ${attemptedPrivilegedFields.join(", ")}`, 403);
     }
   }
 
-  const name = body?.name?.trim();
-  const handle = body?.handle?.trim().replace(/^@/, "");
-  const selectedSections = Array.isArray(body?.sections)
-    ? body.sections.filter((section): section is SectionKey => typeof section === "string" && sectionKeys.includes(section as SectionKey))
-    : [];
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: memberId },
+        data: {
+          name: body.name?.trim() || undefined,
+          handle: body.handle?.trim().replace(/^@/, "") || undefined,
+        },
+      });
 
-  const result = await prisma.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: memberId },
-      data: {
-        name: name || undefined,
-        handle: handle || undefined,
-      },
-    });
-
-    if (isOperator) {
-      if (body?.discordUserId !== undefined) {
-        await tx.user.update({
-          where: { id: memberId },
-          data: { discordUserId: body.discordUserId?.trim() || null },
-        });
-      }
-
-      if (body?.globalRole !== undefined) {
-        const globalRole = await tx.globalRole.findUnique({ where: { key: body.globalRole as GlobalRoleKey } });
-        if (globalRole) {
-          await tx.userGlobalRole.upsert({
-            where: { userId_roleId: { userId: memberId, roleId: globalRole.id } },
-            update: {},
-            create: { userId: memberId, roleId: globalRole.id },
+      if (isOperator) {
+        if (body.discordUserId !== undefined) {
+          await tx.user.update({
+            where: { id: memberId },
+            data: { discordUserId: body.discordUserId?.trim() || null },
           });
         }
-      }
 
-      if (body?.section !== undefined && body?.sectionRole !== undefined) {
-        const section = await tx.section.findUnique({ where: { key: body.section as SectionKey } });
-        if (section) {
-          if (body.sectionRole === null || body.sectionRole === "remove") {
-            await tx.sectionMembership.deleteMany({
-              where: { userId: memberId, sectionId: section.id },
-            });
-          } else {
-            await tx.sectionMembership.upsert({
-              where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
-              update: { role: body.sectionRole as "lead" | "member" },
-              create: { userId: memberId, sectionId: section.id, role: body.sectionRole as "lead" | "member" },
+        if (body.globalRole !== undefined) {
+          const globalRole = await tx.globalRole.findUnique({ where: { key: body.globalRole as GlobalRoleKey } });
+          if (globalRole) {
+            await tx.userGlobalRole.upsert({
+              where: { userId_roleId: { userId: memberId, roleId: globalRole.id } },
+              update: {},
+              create: { userId: memberId, roleId: globalRole.id },
             });
           }
         }
-      } else if (body?.sections !== undefined) {
-        const sectionsForMembership = await tx.section.findMany({ where: { key: { in: selectedSections } } });
-        await tx.sectionMembership.deleteMany({
-          where: { userId: memberId },
-        });
-        for (const section of sectionsForMembership) {
-          await tx.sectionMembership.upsert({
-            where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
-            update: {},
-            create: { userId: memberId, sectionId: section.id, role: "member" },
+
+        if (body.section !== undefined && body.sectionRole !== undefined) {
+          const section = await tx.section.findUnique({ where: { key: body.section } });
+          if (section) {
+            if (body.sectionRole === null || body.sectionRole === "remove") {
+              await tx.sectionMembership.deleteMany({
+                where: { userId: memberId, sectionId: section.id },
+              });
+            } else {
+              await tx.sectionMembership.upsert({
+                where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
+                update: { role: body.sectionRole as "lead" | "member" },
+                create: { userId: memberId, sectionId: section.id, role: body.sectionRole as "lead" | "member" },
+              });
+            }
+          }
+        } else if (body.sections !== undefined) {
+          const sectionsForMembership = await tx.section.findMany({ where: { key: { in: body.sections } } });
+          await tx.sectionMembership.deleteMany({
+            where: { userId: memberId },
           });
+          for (const section of sectionsForMembership) {
+            await tx.sectionMembership.upsert({
+              where: { userId_sectionId: { userId: memberId, sectionId: section.id } },
+              update: {},
+              create: { userId: memberId, sectionId: section.id, role: "member" },
+            });
+          }
         }
       }
-    }
 
-    return tx.user.findUniqueOrThrow({
-      where: { id: memberId },
-      include: {
-        globalRoles: { include: { role: true } },
-        sectionMemberships: { include: { section: true } },
-      },
+      return tx.user.findUniqueOrThrow({
+        where: { id: memberId },
+        include: {
+          globalRoles: { include: { role: true } },
+          sectionMemberships: { include: { section: true } },
+        },
+      });
     });
-  });
 
-  const hadRoleChange = isOperator && (body?.globalRole !== undefined || body?.section !== undefined || body?.sections !== undefined);
-  if (hadRoleChange) triggerDiscordSync(memberId);
+    const hadRoleChange = isOperator && (body.globalRole !== undefined || body.section !== undefined || body.sections !== undefined);
+    if (hadRoleChange) triggerDiscordSync(memberId);
 
-  return NextResponse.json({ member: toMember(result) });
+    return Response.json({ member: toMember(result) });
+  } catch (error) {
+    return handleApiError(error);
+  }
 }

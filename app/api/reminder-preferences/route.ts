@@ -1,19 +1,15 @@
-import { NextResponse } from "next/server";
 import { prisma } from "../../../src/db";
 import { requireCurrentUser } from "../../../src/server/permissions";
-import type { ReminderFrequency, ReminderPreference } from "../../../src/types";
-
-const frequencies: ReminderFrequency[] = ["daily", "weekly", "event_only", "special_request_only", "none"];
-
-function toArray(value: unknown) {
-  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
-}
+import { CreateReminderPreferenceSchema } from "../../../src/server/schemas";
+import { parseBody, handleApiError } from "../../../src/server/validation";
+import { apiError } from "../../../src/server/api-response";
+import type { ReminderPreference } from "../../../src/types";
 
 function mapPreference(preference: Awaited<ReturnType<typeof prisma.reminderPreference.upsert>>): ReminderPreference {
   return {
     id: preference.id,
     memberId: preference.userId,
-    frequency: preference.frequency,
+    frequency: preference.frequency as ReminderPreference["frequency"],
     sendClearForDay: preference.sendClearForDay,
     taskReminders: preference.taskReminders,
     liveEventReminders: preference.liveEventReminders,
@@ -30,40 +26,47 @@ export async function POST(request: Request) {
   const access = await requireCurrentUser();
   if ("response" in access) return access.response;
 
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-  const memberId = String(body?.memberId || access.access.userId);
-  const canEditTarget = memberId === access.access.userId || access.access.globalRoles.includes("owner") || access.access.globalRoles.includes("operations_lead");
-  if (!canEditTarget) return NextResponse.json({ error: "You can only edit your own reminders" }, { status: 403 });
+  const parsed = await parseBody(CreateReminderPreferenceSchema, request);
+  if ("error" in parsed) return parsed.error;
 
-  const frequency = frequencies.find((item) => item === body?.frequency) ?? "daily";
-  const preference = await prisma.reminderPreference.upsert({
-    where: { userId: memberId },
-    update: {
-      frequency,
-      sendClearForDay: Boolean(body?.sendClearForDay),
-      taskReminders: Boolean(body?.taskReminders),
-      liveEventReminders: Boolean(body?.liveEventReminders),
-      specialRequestReminders: Boolean(body?.specialRequestReminders),
-      preferredDays: toArray(body?.preferredDays),
-      preferredTimes: toArray(body?.preferredTimes),
-      preferredPlatforms: toArray(body?.preferredPlatforms),
-      preferredContentTypes: toArray(body?.preferredContentTypes),
-      notes: String(body?.notes || "").trim() || null,
-    },
-    create: {
-      userId: memberId,
-      frequency,
-      sendClearForDay: Boolean(body?.sendClearForDay),
-      taskReminders: Boolean(body?.taskReminders),
-      liveEventReminders: Boolean(body?.liveEventReminders),
-      specialRequestReminders: Boolean(body?.specialRequestReminders),
-      preferredDays: toArray(body?.preferredDays),
-      preferredTimes: toArray(body?.preferredTimes),
-      preferredPlatforms: toArray(body?.preferredPlatforms),
-      preferredContentTypes: toArray(body?.preferredContentTypes),
-      notes: String(body?.notes || "").trim() || null,
-    },
-  });
+  const { memberId, frequency, sendClearForDay, taskReminders, liveEventReminders, specialRequestReminders, preferredDays, preferredTimes, preferredPlatforms, preferredContentTypes, notes } = parsed.data;
+  const targetMemberId = memberId || access.access.userId;
 
-  return NextResponse.json({ preference: mapPreference(preference) });
+  const canEditTarget = targetMemberId === access.access.userId || access.access.globalRoles.includes("owner") || access.access.globalRoles.includes("operations_lead");
+  if (!canEditTarget) return apiError("You can only edit your own reminders", 403);
+
+  try {
+    const preference = await prisma.reminderPreference.upsert({
+      where: { userId: targetMemberId },
+      update: {
+        frequency,
+        sendClearForDay: sendClearForDay ?? true,
+        taskReminders: taskReminders ?? true,
+        liveEventReminders: liveEventReminders ?? true,
+        specialRequestReminders: specialRequestReminders ?? true,
+        preferredDays: preferredDays ?? [],
+        preferredTimes: preferredTimes ?? [],
+        preferredPlatforms: preferredPlatforms ?? [],
+        preferredContentTypes: preferredContentTypes ?? [],
+        notes: notes?.trim() || null,
+      },
+      create: {
+        userId: targetMemberId,
+        frequency,
+        sendClearForDay: sendClearForDay ?? true,
+        taskReminders: taskReminders ?? true,
+        liveEventReminders: liveEventReminders ?? true,
+        specialRequestReminders: specialRequestReminders ?? true,
+        preferredDays: preferredDays ?? [],
+        preferredTimes: preferredTimes ?? [],
+        preferredPlatforms: preferredPlatforms ?? [],
+        preferredContentTypes: preferredContentTypes ?? [],
+        notes: notes?.trim() || null,
+      },
+    });
+
+    return Response.json({ preference: mapPreference(preference) });
+  } catch (error) {
+    return handleApiError(error);
+  }
 }

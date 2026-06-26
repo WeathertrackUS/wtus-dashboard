@@ -1,26 +1,22 @@
-import { NextResponse } from "next/server";
 import { prisma } from "../../../../../src/db";
-import { deriveCreatedByRole, requireGlobalOperator } from "../../../../../src/server/permissions";
+import { requireGlobalOperator } from "../../../../../src/server/permissions";
+import { UpdateInviteSchema } from "../../../../../src/server/schemas";
+import { parseBody, handleApiError } from "../../../../../src/server/validation";
 import type { OnboardingInvite } from "../../../../../src/types";
 
-const allowedStatuses = ["open", "disabled"] as const;
-
-function toInvite(
-  invite: {
-    id: string;
-    token: string;
-    label: string;
-    status: "open" | "used" | "disabled";
-    createdAt: Date;
-    usedByUserId: string | null;
-    createdBy?: { globalRoles: Array<{ role: { key: string } }> } | null;
-  },
-): OnboardingInvite {
+function toInvite(invite: {
+  id: string;
+  token: string;
+  label: string;
+  status: "open" | "used" | "disabled";
+  createdAt: Date;
+  usedByUserId: string | null;
+}): OnboardingInvite {
   return {
     id: invite.id,
     token: invite.token,
     label: invite.label,
-    createdByRole: deriveCreatedByRole(invite.createdBy?.globalRoles.map((gr) => gr.role.key) ?? []),
+    createdByRole: "operations",
     createdAt: invite.createdAt.toISOString(),
     status: invite.status,
     memberId: invite.usedByUserId ?? undefined,
@@ -32,18 +28,19 @@ export async function PATCH(request: Request, context: { params: Promise<{ invit
   if ("response" in access) return access.response;
 
   const { inviteId } = await context.params;
-  const body = (await request.json().catch(() => null)) as { status?: string } | null;
-  const status = allowedStatuses.find((item) => item === body?.status);
+  const parsed = await parseBody(UpdateInviteSchema, request);
+  if ("error" in parsed) return parsed.error;
 
-  if (!status) {
-    return NextResponse.json({ error: "Unsupported invite status" }, { status: 400 });
+  const { status } = parsed.data;
+
+  try {
+    const invite = await prisma.onboardingInvite.update({
+      where: { id: inviteId },
+      data: { status },
+    });
+
+    return Response.json({ invite: toInvite(invite) });
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  const invite = await prisma.onboardingInvite.update({
-    where: { id: inviteId },
-    data: { status },
-    include: { createdBy: { include: { globalRoles: { include: { role: true } } } } },
-  });
-
-  return NextResponse.json({ invite: toInvite(invite) });
 }

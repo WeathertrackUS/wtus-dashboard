@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
 import { prisma } from "../../../../../src/db";
 import { requireGlobalOperator } from "../../../../../src/server/permissions";
+import { CreateAssignmentSchema } from "../../../../../src/server/schemas";
+import { parseBody, handleApiError } from "../../../../../src/server/validation";
 import type { LiveEventAssignment } from "../../../../../src/types";
 
 export async function POST(request: Request, context: { params: Promise<{ eventId: string }> }) {
@@ -8,43 +9,37 @@ export async function POST(request: Request, context: { params: Promise<{ eventI
   if ("response" in access) return access.response;
 
   const { eventId } = await context.params;
-  const body = (await request.json().catch(() => null)) as {
-    memberId?: string;
-    roleId?: string;
-    region?: string;
-    platform?: string;
-    notes?: string;
-  } | null;
+  const parsed = await parseBody(CreateAssignmentSchema, request);
+  if ("error" in parsed) return parsed.error;
 
-  const memberId = body?.memberId?.trim();
-  const roleId = body?.roleId?.trim();
+  const { memberId, roleId, region, platform, notes } = parsed.data;
 
-  if (!memberId || !roleId) {
-    return NextResponse.json({ error: "Member and event role are required" }, { status: 400 });
+  try {
+    const assignment = await prisma.liveEventAssignment.create({
+      data: {
+        liveEventId: eventId,
+        userId: memberId.trim(),
+        liveEventRoleId: roleId.trim(),
+        region: region?.trim() || null,
+        platform: platform?.trim() || null,
+        notes: notes?.trim() || null,
+        status: "assigned",
+        assignedById: access.access.userId,
+      },
+    });
+
+    const result: LiveEventAssignment = {
+      id: assignment.id,
+      memberId: assignment.userId,
+      roleId: assignment.liveEventRoleId,
+      region: assignment.region ?? undefined,
+      platform: assignment.platform ?? undefined,
+      status: assignment.status as LiveEventAssignment["status"],
+      notes: assignment.notes ?? "",
+    };
+
+    return Response.json({ assignment: result }, { status: 201 });
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  const assignment = await prisma.liveEventAssignment.create({
-    data: {
-      liveEventId: eventId,
-      userId: memberId,
-      liveEventRoleId: roleId,
-      region: body?.region?.trim() || null,
-      platform: body?.platform?.trim() || null,
-      notes: body?.notes?.trim() || null,
-      status: "assigned",
-      assignedById: access.access.userId,
-    },
-  });
-
-  const result: LiveEventAssignment = {
-    id: assignment.id,
-    memberId: assignment.userId,
-    roleId: assignment.liveEventRoleId,
-    region: assignment.region ?? undefined,
-    platform: assignment.platform ?? undefined,
-    status: assignment.status,
-    notes: assignment.notes ?? "",
-  };
-
-  return NextResponse.json({ assignment: result }, { status: 201 });
 }

@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
 import { prisma } from "../../../src/db";
 import { requireGlobalOperator } from "../../../src/server/permissions";
+import { CreateSpecialRequestSchema } from "../../../src/server/schemas";
+import { parseBody, handleApiError } from "../../../src/server/validation";
 import type { SpecialRequest } from "../../../src/types";
 
 function toSpecialRequest(request: Awaited<ReturnType<typeof prisma.specialRequest.create>>): SpecialRequest {
@@ -13,7 +14,7 @@ function toSpecialRequest(request: Awaited<ReturnType<typeof prisma.specialReque
     role: request.role,
     platform: request.platform ?? undefined,
     dueAt: request.dueAt?.toISOString(),
-    status: request.status,
+    status: request.status as SpecialRequest["status"],
     responseNote: request.responseNote ?? "",
     createdAt: request.createdAt.toISOString(),
   };
@@ -23,28 +24,26 @@ export async function POST(request: Request) {
   const access = await requireGlobalOperator();
   if ("response" in access) return access.response;
 
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-  const targetUserId = String(body?.memberId || "");
-  const title = String(body?.title || "").trim();
-  const prompt = String(body?.prompt || "").trim();
-  const role = String(body?.role || "").trim();
+  const parsed = await parseBody(CreateSpecialRequestSchema, request);
+  if ("error" in parsed) return parsed.error;
 
-  if (!targetUserId || !title || !prompt || !role) {
-    return NextResponse.json({ error: "Member, title, prompt, and role are required" }, { status: 400 });
+  const { memberId, title, prompt, role, platform, dueAt } = parsed.data;
+
+  try {
+    const specialRequest = await prisma.specialRequest.create({
+      data: {
+        targetUserId: memberId,
+        createdById: access.access.userId,
+        title: title.trim(),
+        prompt: prompt.trim(),
+        role: role.trim(),
+        platform: platform?.trim() || null,
+        dueAt: dueAt ? new Date(dueAt) : null,
+      },
+    });
+
+    return Response.json({ specialRequest: toSpecialRequest(specialRequest) }, { status: 201 });
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  const dueAt = body?.dueAt ? new Date(String(body.dueAt)) : null;
-  const specialRequest = await prisma.specialRequest.create({
-    data: {
-      targetUserId,
-      createdById: access.access.userId,
-      title,
-      prompt,
-      role,
-      platform: String(body?.platform || "").trim() || null,
-      dueAt: dueAt && !Number.isNaN(dueAt.getTime()) ? dueAt : null,
-    },
-  });
-
-  return NextResponse.json({ specialRequest: toSpecialRequest(specialRequest) }, { status: 201 });
 }
