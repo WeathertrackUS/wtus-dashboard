@@ -177,4 +177,67 @@ describe("handleApiError", () => {
     const response = handleApiError(null);
     expect(response.status).toBe(500);
   });
+
+  it("returns 409 for Prisma P2002 (unique constraint)", () => {
+    const err = Object.assign(new Error("Unique constraint"), {
+      code: "P2002",
+      meta: { target: ["email"] },
+    });
+    const response = handleApiError(err);
+    expect(response.status).toBe(409);
+  });
+
+  it("returns 404 for Prisma P2025 (record not found)", () => {
+    const err = Object.assign(new Error("Not found"), {
+      code: "P2025",
+      meta: {},
+    });
+    const response = handleApiError(err);
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 400 for Prisma P2003 (foreign key violation)", () => {
+    const err = Object.assign(new Error("FK violation"), {
+      code: "P2003",
+      meta: {},
+    });
+    const response = handleApiError(err);
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 for Prisma P2014 (required relation missing)", () => {
+    const err = Object.assign(new Error("Relation missing"), {
+      code: "P2014",
+      meta: {},
+    });
+    const response = handleApiError(err);
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 500 for unknown Prisma error code", () => {
+    const err = Object.assign(new Error("Unknown db error"), {
+      code: "P9999",
+      meta: {},
+    });
+    const response = handleApiError(err);
+    expect(response.status).toBe(500);
+  });
+
+  it("returns 503 for Prisma initialization error", () => {
+    class PrismaClientInitializationError extends Error {
+      code = "P1000";
+    }
+    const err = new PrismaClientInitializationError("Connection failed");
+    const response = handleApiError(err);
+    expect(response.status).toBe(503);
+  });
+
+  it("returns 503 for Prisma Rust panic error", () => {
+    class PrismaClientRustPanicError extends Error {
+      code = "P5000";
+    }
+    const err = new PrismaClientRustPanicError("Engine panic");
+    const response = handleApiError(err);
+    expect(response.status).toBe(503);
+  });
 });

@@ -68,7 +68,8 @@ function isPrismaKnownRequestError(err: unknown): err is PrismaLikeError {
     err !== null &&
     "code" in err &&
     typeof (err as PrismaLikeError).code === "string" &&
-    (err as PrismaLikeError).code!.startsWith("P")
+    /^P\d{4}$/.test((err as PrismaLikeError).code!) &&
+    "meta" in err
   );
 }
 

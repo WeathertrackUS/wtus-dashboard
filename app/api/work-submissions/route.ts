@@ -39,8 +39,8 @@ export async function POST(request: Request) {
       data: {
         userId: targetMemberId,
         title: title.trim(),
-        workDate: workDate ? new Date(workDate) : new Date(),
-        platform: platform?.trim() || "WTUS",
+        workDate: new Date(workDate),
+        platform: platform.trim(),
         contentType,
         memberRole: memberRole?.trim() || "Contributor",
         description: description?.trim() || "",

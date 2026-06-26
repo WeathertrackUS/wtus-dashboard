@@ -1,22 +1,25 @@
 import { prisma } from "../../../../../src/db";
-import { requireGlobalOperator } from "../../../../../src/server/permissions";
+import { requireGlobalOperator, deriveCreatedByRole } from "../../../../../src/server/permissions";
 import { UpdateInviteSchema } from "../../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../../src/server/validation";
 import type { OnboardingInvite } from "../../../../../src/types";
 
-function toInvite(invite: {
-  id: string;
-  token: string;
-  label: string;
-  status: "open" | "used" | "disabled";
-  createdAt: Date;
-  usedByUserId: string | null;
-}): OnboardingInvite {
+function toInvite(
+  invite: {
+    id: string;
+    token: string;
+    label: string;
+    status: "open" | "used" | "disabled";
+    createdAt: Date;
+    usedByUserId: string | null;
+  },
+  globalRoles: string[]
+): OnboardingInvite {
   return {
     id: invite.id,
     token: invite.token,
     label: invite.label,
-    createdByRole: "operations",
+    createdByRole: deriveCreatedByRole(globalRoles),
     createdAt: invite.createdAt.toISOString(),
     status: invite.status,
     memberId: invite.usedByUserId ?? undefined,
@@ -39,7 +42,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ invit
       data: { status },
     });
 
-    return Response.json({ invite: toInvite(invite) });
+    return Response.json({ invite: toInvite(invite, access.access.globalRoles) });
   } catch (error) {
     return handleApiError(error);
   }

@@ -89,7 +89,9 @@ export const ISODateStringSchema = z.string().refine(
   { message: "Invalid date string" }
 );
 
-export const HHMMTimeSchema = z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM format");
+export const HHMMTimeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Must be valid HH:MM time (00:00-23:59)");
 
 export const NonEmptyStringSchema = z.string().min(1, "This field is required");
 
@@ -208,24 +210,29 @@ export const CreateWorkSubmissionSchema = z.object({
   notable: z.boolean().optional().default(false),
 });
 
-export const CreateCoverageSchema = z.object({
-  assigneeId: NonEmptyStringSchema,
-  coveredForId: OptionalStringSchema,
-  scope: CoverageScopeSchema.optional().default("section"),
-  section: SectionKeySchema.optional(),
-  eventId: OptionalStringSchema,
-  coverageRole: NonEmptyStringSchema,
-  reason: z.string().optional().default(""),
-  startsAt: ISODateStringSchema,
-  endsAt: ISODateStringSchema,
-});
+export const CreateCoverageSchema = z
+  .object({
+    assigneeId: NonEmptyStringSchema,
+    coveredForId: OptionalStringSchema,
+    scope: CoverageScopeSchema.optional().default("section"),
+    section: SectionKeySchema.optional(),
+    eventId: OptionalStringSchema,
+    coverageRole: NonEmptyStringSchema,
+    reason: z.string().optional().default(""),
+    startsAt: ISODateStringSchema,
+    endsAt: ISODateStringSchema,
+  })
+  .refine((data) => new Date(data.endsAt) > new Date(data.startsAt), {
+    message: "endsAt must be after startsAt",
+    path: ["endsAt"],
+  });
 
 export const CreateInviteSchema = z.object({
   label: NonEmptyStringSchema,
 });
 
 export const UpdateInviteSchema = z.object({
-  status: InviteStatusSchema,
+  status: z.enum(["open", "disabled"]),
 });
 
 export const CompleteOnboardingSchema = z.object({
