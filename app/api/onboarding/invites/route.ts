@@ -14,13 +14,13 @@ function toInvite(
     createdAt: Date;
     usedByUserId: string | null;
   },
-  globalRoles: string[]
+  creatorGlobalRoles: string[]
 ): OnboardingInvite {
   return {
     id: invite.id,
     token: invite.token,
     label: invite.label,
-    createdByRole: deriveCreatedByRole(globalRoles),
+    createdByRole: deriveCreatedByRole(creatorGlobalRoles),
     createdAt: invite.createdAt.toISOString(),
     status: invite.status,
     memberId: invite.usedByUserId ?? undefined,

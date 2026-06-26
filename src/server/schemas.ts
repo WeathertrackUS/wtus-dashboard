@@ -236,7 +236,7 @@ export const UpdateInviteSchema = z.object({
 });
 
 export const CompleteOnboardingSchema = z.object({
-  token: NonEmptyStringSchema,
+  token: z.string().optional(),
   name: NonEmptyStringSchema,
   handle: NonEmptyStringSchema,
   sections: z
@@ -251,7 +251,7 @@ export const CompleteOnboardingSchema = z.object({
 });
 
 export const CreateReminderPreferenceSchema = z.object({
-  memberId: NonEmptyStringSchema,
+  memberId: z.string().optional(),
   frequency: ReminderFrequencySchema.optional().default("daily"),
   sendClearForDay: z.boolean().optional().default(true),
   taskReminders: z.boolean().optional().default(true),

@@ -1,5 +1,5 @@
 import { prisma } from "../../../../src/db";
-import { requireDiscordVerifiedUser } from "../../../../src/server/permissions";
+import { requireDiscordVerifiedUser, deriveCreatedByRole } from "../../../../src/server/permissions";
 import { CompleteOnboardingSchema } from "../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../src/server/validation";
 import { apiError } from "../../../../src/server/api-response";
@@ -15,7 +15,16 @@ export async function POST(request: Request) {
   const { token, name, handle, sections: selectedSections } = parsed.data;
 
   try {
-    const invite = token ? await prisma.onboardingInvite.findUnique({ where: { token } }) : null;
+    const invite = token
+      ? await prisma.onboardingInvite.findUnique({
+          where: { token },
+          include: {
+            createdBy: {
+              include: { globalRoles: { include: { role: true } } },
+            },
+          },
+        })
+      : null;
     if (token && (!invite || invite.status !== "open")) {
       return apiError("Invite is not open", 409);
     }
@@ -63,6 +72,8 @@ export async function POST(request: Request) {
           })
         : null;
 
+      const creatorRoles = invite?.createdBy?.globalRoles.map((gr) => gr.role.key) ?? [];
+
       return {
         member: {
           id: user.id,
@@ -78,7 +89,7 @@ export async function POST(request: Request) {
               id: usedInvite.id,
               token: usedInvite.token,
               label: usedInvite.label,
-              createdByRole: "operations" as const,
+              createdByRole: deriveCreatedByRole(creatorRoles),
               createdAt: usedInvite.createdAt.toISOString(),
               status: "used" as const,
               memberId: user.id,
