@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     const result = await prisma.$transaction(async (tx) => {
       const [globalRoleRecord, sectionRecord] = await Promise.all([
         tx.globalRole.findUnique({ where: { key: globalRole } }),
-        tx.section.findUnique({ where: { key: section } }),
+        section ? tx.section.findUnique({ where: { key: section } }) : Promise.resolve(null),
       ]);
       const user = await tx.user.create({
         data: {
