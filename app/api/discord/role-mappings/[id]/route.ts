@@ -1,30 +1,33 @@
-import { NextResponse } from "next/server";
 import { prisma } from "../../../../../src/db";
 import { requireGlobalOperator } from "../../../../../src/server/permissions";
+import { UpdateRoleMappingSchema } from "../../../../../src/server/schemas";
+import { parseBody, handleApiError } from "../../../../../src/server/validation";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const access = await requireGlobalOperator();
   if ("response" in access) return access.response;
 
   const { id } = await context.params;
-  const body = (await request.json()) as {
-    guildId?: string;
-    discordRoleId?: string;
-    sectionKey?: string | null;
-    globalRoleKey?: string | null;
-  };
+  const parsed = await parseBody(UpdateRoleMappingSchema, request);
+  if ("error" in parsed) return parsed.error;
 
-  const mapping = await prisma.discordRoleMapping.update({
-    where: { id },
-    data: {
-      ...(body.guildId !== undefined && { guildId: body.guildId }),
-      ...(body.discordRoleId !== undefined && { discordRoleId: body.discordRoleId }),
-      ...(body.sectionKey !== undefined && { sectionKey: body.sectionKey as never }),
-      ...(body.globalRoleKey !== undefined && { globalRoleKey: body.globalRoleKey as never }),
-    },
-  });
+  const body = parsed.data;
 
-  return NextResponse.json(mapping);
+  try {
+    const mapping = await prisma.discordRoleMapping.update({
+      where: { id },
+      data: {
+        ...(body.guildId !== undefined && { guildId: body.guildId }),
+        ...(body.discordRoleId !== undefined && { discordRoleId: body.discordRoleId }),
+        ...(body.sectionKey !== undefined && { sectionKey: body.sectionKey }),
+        ...(body.globalRoleKey !== undefined && { globalRoleKey: body.globalRoleKey }),
+      },
+    });
+
+    return Response.json(mapping);
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
@@ -32,7 +35,11 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
   if ("response" in access) return access.response;
 
   const { id } = await context.params;
-  await prisma.discordRoleMapping.delete({ where: { id } });
 
-  return NextResponse.json({ ok: true });
+  try {
+    await prisma.discordRoleMapping.delete({ where: { id } });
+    return Response.json({ success: true });
+  } catch (error) {
+    return handleApiError(error);
+  }
 }

@@ -1,59 +1,50 @@
-import { NextResponse } from "next/server";
 import { prisma } from "../../../src/db";
 import { requireGlobalOperator } from "../../../src/server/permissions";
+import { CreateLiveEventSchema } from "../../../src/server/schemas";
+import { parseBody, handleApiError } from "../../../src/server/validation";
 import type { LiveEvent } from "../../../src/types";
-
-function parseDate(value?: string) {
-  if (!value || value.toLowerCase() === "now") return new Date();
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? new Date() : date;
-}
 
 export async function POST(request: Request) {
   const access = await requireGlobalOperator();
   if ("response" in access) return access.response;
 
-  const body = (await request.json().catch(() => null)) as {
-    name?: string;
-    description?: string;
-    startsAt?: string;
-    briefing?: string;
-  } | null;
+  const parsed = await parseBody(CreateLiveEventSchema, request);
+  if ("error" in parsed) return parsed.error;
 
-  const name = body?.name?.trim();
+  const { name, description, startsAt, briefing } = parsed.data;
 
-  if (!name) {
-    return NextResponse.json({ error: "Event name is required" }, { status: 400 });
+  try {
+    const liveEvent = await prisma.liveEvent.create({
+      data: {
+        name: name.trim(),
+        description: description?.trim() || null,
+        status: "active",
+        startsAt: startsAt ? new Date(startsAt) : new Date(),
+        briefing: briefing?.trim() || null,
+        createdById: access.access.userId,
+      },
+      include: { roles: true, assignments: true },
+    });
+
+    const event: LiveEvent = {
+      id: liveEvent.id,
+      name: liveEvent.name,
+      description: liveEvent.description ?? "",
+      status: liveEvent.status as LiveEvent["status"],
+      startsAt: liveEvent.startsAt.toISOString(),
+      endsAt: liveEvent.endsAt?.toISOString(),
+      briefing: liveEvent.briefing ?? "",
+      updates: [],
+      roles: liveEvent.roles.map((role) => ({
+        id: role.id,
+        name: role.name,
+        description: role.description ?? "",
+      })),
+      assignments: [],
+    };
+
+    return Response.json({ event }, { status: 201 });
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  const liveEvent = await prisma.liveEvent.create({
-    data: {
-      name,
-      description: body?.description?.trim() || null,
-      status: "active",
-      startsAt: parseDate(body?.startsAt),
-      briefing: body?.briefing?.trim() || null,
-      createdById: access.access.userId,
-    },
-    include: { roles: true, assignments: true },
-  });
-
-  const event: LiveEvent = {
-    id: liveEvent.id,
-    name: liveEvent.name,
-    description: liveEvent.description ?? "",
-    status: liveEvent.status,
-    startsAt: liveEvent.startsAt.toISOString(),
-    endsAt: liveEvent.endsAt?.toISOString(),
-    briefing: liveEvent.briefing ?? "",
-    updates: [],
-    roles: liveEvent.roles.map((role) => ({
-      id: role.id,
-      name: role.name,
-      description: role.description ?? "",
-    })),
-    assignments: [],
-  };
-
-  return NextResponse.json({ event }, { status: 201 });
 }
