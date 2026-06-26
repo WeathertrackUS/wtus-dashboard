@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDashboardData } from "../../../src/server/dashboard-data";
 import { requireCurrentUser } from "../../../src/server/permissions";
+import { apiError } from "../../../src/server/api-response";
 
 export async function GET() {
   const access = await requireCurrentUser();
@@ -8,8 +9,8 @@ export async function GET() {
 
   try {
     const data = await getDashboardData();
-    return NextResponse.json(data);
+    return Response.json(data);
   } catch {
-    return NextResponse.json({ error: "Dashboard data is unavailable" }, { status: 503 });
+    return apiError("Dashboard data is unavailable", 503);
   }
 }

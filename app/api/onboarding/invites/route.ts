@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
 import { prisma } from "../../../../src/db";
 import { requireGlobalOperator } from "../../../../src/server/permissions";
+import { CreateInviteSchema } from "../../../../src/server/schemas";
+import { parseBody, handleApiError } from "../../../../src/server/validation";
 import type { OnboardingInvite } from "../../../../src/types";
 
 function toInvite(invite: {
@@ -17,7 +18,7 @@ function toInvite(invite: {
     token: invite.token,
     label: invite.label,
     createdByRole: "operations",
-    createdAt: invite.createdAt.toLocaleString(),
+    createdAt: invite.createdAt.toISOString(),
     status: invite.status,
     memberId: invite.usedByUserId ?? undefined,
   };
@@ -27,15 +28,21 @@ export async function POST(request: Request) {
   const access = await requireGlobalOperator();
   if ("response" in access) return access.response;
 
-  const body = (await request.json().catch(() => null)) as { label?: string } | null;
-  const invite = await prisma.onboardingInvite.create({
-    data: {
-      token: randomUUID(),
-      label: body?.label?.trim() || "New member",
-      status: "open",
-      createdByUserId: access.access.userId,
-    },
-  });
+  const parsed = await parseBody(CreateInviteSchema, request);
+  if ("error" in parsed) return parsed.error;
 
-  return NextResponse.json({ invite: toInvite(invite) }, { status: 201 });
+  try {
+    const invite = await prisma.onboardingInvite.create({
+      data: {
+        token: randomUUID(),
+        label: parsed.data.label?.trim() || "New member",
+        status: "open",
+        createdByUserId: access.access.userId,
+      },
+    });
+
+    return Response.json({ invite: toInvite(invite) }, { status: 201 });
+  } catch (error) {
+    return handleApiError(error);
+  }
 }

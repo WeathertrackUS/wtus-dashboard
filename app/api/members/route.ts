@@ -1,10 +1,8 @@
-import { NextResponse } from "next/server";
 import { prisma } from "../../../src/db";
 import { requireGlobalOperator } from "../../../src/server/permissions";
+import { CreateMemberSchema } from "../../../src/server/schemas";
+import { parseBody, handleApiError } from "../../../src/server/validation";
 import type { Member, SectionKey } from "../../../src/types";
-
-const sectionKeys: SectionKey[] = ["finance", "forecasting", "nowcasting", "youtube", "graphics", "facebook", "development", "verification"];
-const globalRoleKeys = ["owner", "operations_lead", "member"] as const;
 
 function toMember(user: {
   id: string;
@@ -35,54 +33,45 @@ export async function POST(request: Request) {
   const access = await requireGlobalOperator();
   if ("response" in access) return access.response;
 
-  const body = (await request.json().catch(() => null)) as {
-    name?: string;
-    handle?: string;
-    globalRole?: string;
-    section?: string;
-    sectionRole?: "lead" | "member";
-  } | null;
+  const parsed = await parseBody(CreateMemberSchema, request);
+  if ("error" in parsed) return parsed.error;
 
-  const name = body?.name?.trim();
-  const handle = body?.handle?.trim().replace(/^@/, "");
-  const roleKey = globalRoleKeys.find((role) => role === body?.globalRole) ?? "member";
-  const sectionKey = sectionKeys.find((section) => section === body?.section) ?? "nowcasting";
-  const sectionRole = body?.sectionRole === "lead" ? "lead" : "member";
+  const { name, handle, globalRole, section, sectionRole } = parsed.data;
 
-  if (!name || !handle) {
-    return NextResponse.json({ error: "Name and handle are required" }, { status: 400 });
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const [globalRoleRecord, sectionRecord] = await Promise.all([
+        tx.globalRole.findUnique({ where: { key: globalRole } }),
+        tx.section.findUnique({ where: { key: section } }),
+      ]);
+      const user = await tx.user.create({
+        data: {
+          name: name.trim(),
+          handle: handle.trim().replace(/^@/, ""),
+          status: "invited",
+          onboardingStatus: "pending",
+        },
+      });
+
+      if (globalRoleRecord) {
+        await tx.userGlobalRole.create({ data: { userId: user.id, roleId: globalRoleRecord.id } });
+      }
+
+      if (sectionRecord) {
+        await tx.sectionMembership.create({ data: { userId: user.id, sectionId: sectionRecord.id, role: sectionRole } });
+      }
+
+      return tx.user.findUniqueOrThrow({
+        where: { id: user.id },
+        include: {
+          globalRoles: { include: { role: true } },
+          sectionMemberships: { include: { section: true } },
+        },
+      });
+    });
+
+    return Response.json({ member: toMember(result) }, { status: 201 });
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  const result = await prisma.$transaction(async (tx) => {
-    const [globalRole, section] = await Promise.all([
-      tx.globalRole.findUnique({ where: { key: roleKey } }),
-      tx.section.findUnique({ where: { key: sectionKey } }),
-    ]);
-    const user = await tx.user.create({
-      data: {
-        name,
-        handle,
-        status: "invited",
-        onboardingStatus: "pending",
-      },
-    });
-
-    if (globalRole) {
-      await tx.userGlobalRole.create({ data: { userId: user.id, roleId: globalRole.id } });
-    }
-
-    if (section) {
-      await tx.sectionMembership.create({ data: { userId: user.id, sectionId: section.id, role: sectionRole } });
-    }
-
-    return tx.user.findUniqueOrThrow({
-      where: { id: user.id },
-      include: {
-        globalRoles: { include: { role: true } },
-        sectionMemberships: { include: { section: true } },
-      },
-    });
-  });
-
-  return NextResponse.json({ member: toMember(result) }, { status: 201 });
 }

@@ -1,42 +1,34 @@
-import { NextResponse } from "next/server";
 import { prisma } from "../../../src/db";
 import { requireGlobalOperator } from "../../../src/server/permissions";
-import type { SectionKey, TemporaryCoverage } from "../../../src/types";
-
-const sectionKeys: SectionKey[] = ["finance", "forecasting", "nowcasting", "youtube", "graphics", "facebook", "development", "verification"];
-const scopes: TemporaryCoverage["scope"][] = ["global", "section", "live_event"];
-
-function parseDate(value: string | undefined, fallback: Date) {
-  if (!value || value.toLowerCase() === "now") return fallback;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? fallback : date;
-}
+import { CreateCoverageSchema } from "../../../src/server/schemas";
+import { parseBody, handleApiError } from "../../../src/server/validation";
+import type { TemporaryCoverage } from "../../../src/types";
 
 function toCoverage(item: {
   id: string;
   assigneeUserId: string;
   coveredUserId: string | null;
-  scope: TemporaryCoverage["scope"];
-  section: { key: SectionKey } | null;
+  scope: string;
+  section: { key: string } | null;
   liveEventId: string | null;
   coverageRole: string;
   reason: string | null;
   startsAt: Date;
   endsAt: Date;
-  status: TemporaryCoverage["status"];
+  status: string;
 }): TemporaryCoverage {
   return {
     id: item.id,
     assigneeId: item.assigneeUserId,
     coveredForId: item.coveredUserId ?? undefined,
-    scope: item.scope,
-    section: item.section?.key,
+    scope: item.scope as TemporaryCoverage["scope"],
+    section: item.section?.key as TemporaryCoverage["section"],
     eventId: item.liveEventId ?? undefined,
     coverageRole: item.coverageRole,
     reason: item.reason ?? "",
     startsAt: item.startsAt.toISOString(),
     endsAt: item.endsAt.toISOString(),
-    status: item.status,
+    status: item.status as TemporaryCoverage["status"],
   };
 }
 
@@ -44,50 +36,39 @@ export async function POST(request: Request) {
   const access = await requireGlobalOperator();
   if ("response" in access) return access.response;
 
-  const body = (await request.json().catch(() => null)) as {
-    assigneeId?: string;
-    coveredForId?: string;
-    scope?: string;
-    section?: string;
-    eventId?: string;
-    coverageRole?: string;
-    reason?: string;
-    startsAt?: string;
-    endsAt?: string;
-  } | null;
+  const parsed = await parseBody(CreateCoverageSchema, request);
+  if ("error" in parsed) return parsed.error;
 
-  const assigneeId = body?.assigneeId?.trim();
-  const coverageRole = body?.coverageRole?.trim();
-  const scope = scopes.find((item) => item === body?.scope) ?? "section";
-  const sectionKey = sectionKeys.find((item) => item === body?.section);
-  const startsAt = parseDate(body?.startsAt, new Date());
-  const endsAt = parseDate(body?.endsAt, new Date(startsAt.getTime() + 8 * 60 * 60 * 1000));
+  const { assigneeId, coveredForId, scope, section, eventId, coverageRole, reason, startsAt, endsAt } = parsed.data;
 
-  if (!assigneeId || !coverageRole) {
-    return NextResponse.json({ error: "Member and coverage role are required" }, { status: 400 });
+  const startsAtDate = new Date(startsAt);
+  const endsAtDate = new Date(endsAt);
+
+  try {
+    const [sectionRecord, liveEvent] = await Promise.all([
+      scope === "section" && section ? prisma.section.findUnique({ where: { key: section } }) : null,
+      scope === "live_event" && eventId ? prisma.liveEvent.findUnique({ where: { id: eventId } }) : null,
+    ]);
+
+    const coverage = await prisma.temporaryRoleCoverage.create({
+      data: {
+        assigneeUserId: assigneeId.trim(),
+        coveredUserId: coveredForId?.trim() || null,
+        scope,
+        sectionId: sectionRecord?.id,
+        liveEventId: liveEvent?.id,
+        coverageRole: coverageRole.trim(),
+        reason: reason?.trim() || null,
+        startsAt: startsAtDate,
+        endsAt: endsAtDate,
+        status: "active",
+        createdById: access.access.userId,
+      },
+      include: { section: true },
+    });
+
+    return Response.json({ coverage: toCoverage(coverage) }, { status: 201 });
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  const [section, liveEvent] = await Promise.all([
-    scope === "section" && sectionKey ? prisma.section.findUnique({ where: { key: sectionKey } }) : null,
-    scope === "live_event" && body?.eventId ? prisma.liveEvent.findUnique({ where: { id: body.eventId } }) : null,
-  ]);
-
-  const coverage = await prisma.temporaryRoleCoverage.create({
-    data: {
-      assigneeUserId: assigneeId,
-      coveredUserId: body?.coveredForId?.trim() || null,
-      scope,
-      sectionId: section?.id,
-      liveEventId: liveEvent?.id,
-      coverageRole,
-      reason: body?.reason?.trim() || null,
-      startsAt,
-      endsAt,
-      status: "active",
-      createdById: access.access.userId,
-    },
-    include: { section: true },
-  });
-
-  return NextResponse.json({ coverage: toCoverage(coverage) }, { status: 201 });
 }
