@@ -19,7 +19,12 @@ vi.mock("../src/db", () => ({
         updateMany: (...args: unknown[]) => mockSpecialRequestUpdateMany(...args),
         findUnique: (...args: unknown[]) => mockSpecialRequestFindUnique(...args),
       },
-      $transaction: (callback: (tx: unknown) => Promise<unknown>) => mockTransaction(callback),
+      $transaction: (arg: unknown) => {
+        if (Array.isArray(arg)) {
+          return Promise.all(arg);
+        }
+        return mockTransaction(arg);
+      },
       weatherAlertEvent: {
         findUnique: (...args: unknown[]) => mockWeatherAlertEventFindUnique(...args),
         create: (...args: unknown[]) => mockWeatherAlertEventCreate(...args),
@@ -101,25 +106,15 @@ describe("ingestWeatherAlertItem", () => {
   };
 
   it("creates a new event when none exists", async () => {
-    mockTransaction.mockImplementation(async (callback) =>
-      callback({
-        weatherAlertEvent: {
-          findUnique: mockWeatherAlertEventFindUnique.mockResolvedValue(null),
-          create: mockWeatherAlertEventCreate.mockResolvedValue({
-            id: "db-event-1",
-            eventType: item.eventType,
-            title: item.title,
-            description: item.description,
-            severity: item.severity,
-            affectedArea: item.affectedArea,
-          }),
-          update: mockWeatherAlertEventUpdate,
-        },
-        weatherAlertSource: {
-          create: mockWeatherAlertSourceCreate,
-        },
-      }),
-    );
+    mockWeatherAlertEventFindUnique.mockResolvedValue(null);
+    mockWeatherAlertEventCreate.mockResolvedValue({
+      id: "db-event-1",
+      eventType: item.eventType,
+      title: item.title,
+      description: item.description,
+      severity: item.severity,
+      affectedArea: item.affectedArea,
+    });
 
     const { ingestWeatherAlertItem } = await import("../bot/plugins/weather-alerts/ingest");
     const result = await ingestWeatherAlertItem(source, item);
@@ -129,21 +124,14 @@ describe("ingestWeatherAlertItem", () => {
       expect(result.event.eventId).toBe("db-event-1");
       expect(result.event.eventType).toBe("tornado_warning");
     }
+    expect(mockWeatherAlertEventCreate).toHaveBeenCalledOnce();
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 
   it("updates an existing event without treating it as newly created", async () => {
-    mockTransaction.mockImplementation(async (callback) =>
-      callback({
-        weatherAlertEvent: {
-          findUnique: mockWeatherAlertEventFindUnique.mockResolvedValue({ id: "db-event-1" }),
-          create: mockWeatherAlertEventCreate,
-          update: mockWeatherAlertEventUpdate.mockResolvedValue({}),
-        },
-        weatherAlertSource: {
-          create: mockWeatherAlertSourceCreate.mockResolvedValue({}),
-        },
-      }),
-    );
+    mockWeatherAlertEventFindUnique.mockResolvedValue({ id: "db-event-1" });
+    mockWeatherAlertSourceCreate.mockResolvedValue({});
+    mockWeatherAlertEventUpdate.mockResolvedValue({});
 
     const { ingestWeatherAlertItem } = await import("../bot/plugins/weather-alerts/ingest");
     const result = await ingestWeatherAlertItem(source, item);
@@ -151,30 +139,26 @@ describe("ingestWeatherAlertItem", () => {
     expect(result).toEqual({ action: "updated", eventId: "db-event-1" });
     expect(mockWeatherAlertSourceCreate).toHaveBeenCalled();
     expect(mockWeatherAlertEventUpdate).toHaveBeenCalled();
+    expect(mockWeatherAlertEventCreate).not.toHaveBeenCalled();
   });
 
-  it("falls back to the update path when create races on the unique key", async () => {
-    mockTransaction.mockImplementation(async (callback) =>
-      callback({
-        weatherAlertEvent: {
-          findUnique: mockWeatherAlertEventFindUnique
-            .mockResolvedValueOnce(null)
-            .mockResolvedValueOnce({ id: "db-event-raced" }),
-          create: mockWeatherAlertEventCreate.mockRejectedValue({ code: "P2002" }),
-          update: mockWeatherAlertEventUpdate.mockResolvedValue({}),
-        },
-        weatherAlertSource: {
-          create: mockWeatherAlertSourceCreate.mockResolvedValue({}),
-        },
-      }),
-    );
+  it("recovers on a fresh connection when create races on the unique key", async () => {
+    mockWeatherAlertEventFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "db-event-raced" });
+    mockWeatherAlertEventCreate.mockRejectedValue({ code: "P2002" });
+    mockWeatherAlertSourceCreate.mockResolvedValue({});
+    mockWeatherAlertEventUpdate.mockResolvedValue({});
 
     const { ingestWeatherAlertItem } = await import("../bot/plugins/weather-alerts/ingest");
     const result = await ingestWeatherAlertItem(source, item);
 
     expect(result).toEqual({ action: "updated", eventId: "db-event-raced" });
-    expect(mockWeatherAlertEventCreate).toHaveBeenCalled();
+    expect(mockWeatherAlertEventCreate).toHaveBeenCalledOnce();
+    expect(mockWeatherAlertEventFindUnique).toHaveBeenCalledTimes(2);
+    expect(mockWeatherAlertSourceCreate).toHaveBeenCalled();
     expect(mockWeatherAlertEventUpdate).toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 });
 
