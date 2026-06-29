@@ -121,6 +121,24 @@ export function buildSessionCookieName(appBaseUrl?: string) {
     : "next-auth.session-token";
 }
 
+export function readRequestCookie(request: Request, name: string): string | null {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) return null;
+
+  for (const entry of cookieHeader.split(";")) {
+    const [key, ...valueParts] = entry.trim().split("=");
+    if (key === name) {
+      try {
+        return decodeURIComponent(valueParts.join("="));
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
 export function sanitizeRedirectPath(input: string, options: SanitizeOptions = {}) {
   const isProduction = options.isProduction ?? process.env.NODE_ENV === "production";
   const fallback = "/";

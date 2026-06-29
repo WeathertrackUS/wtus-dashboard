@@ -50,4 +50,13 @@ describe("validate-auth-config", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("must share the same origin");
   });
+
+  it("rejects short OIDC client secrets", () => {
+    const result = runValidate({
+      ...validBase,
+      WTUS_DASHBOARD_OIDC_CLIENT_SECRET: "short",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("WTUS_DASHBOARD_OIDC_CLIENT_SECRET must be at least 32 characters");
+  });
 });

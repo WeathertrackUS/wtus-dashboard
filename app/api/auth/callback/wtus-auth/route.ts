@@ -1,12 +1,19 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../../src/db";
-import { getOidcConfig, authorizationCodeGrant, SESSION_MAX_AGE_SECONDS } from "../../../../../src/lib/oidc";
+import {
+  getOidcConfig,
+  authorizationCodeGrant,
+  SESSION_MAX_AGE_SECONDS,
+  resolveOidcRedirectUri,
+  buildOidcCallbackUrl,
+} from "../../../../../src/lib/oidc";
 import {
   getAppBaseUrl,
   getAuthSecret,
   buildSessionCookieName,
   useSecureSessionCookie,
+  readRequestCookie,
   sanitizeRedirectPath,
   verifyOAuthState,
 } from "../../../../../src/server/safe-redirect";
@@ -40,33 +47,6 @@ function clearOAuthStateCookie(response: NextResponse) {
   });
 }
 
-function readCookie(request: Request, name: string) {
-  const cookieHeader = request.headers.get("cookie") || "";
-  for (const entry of cookieHeader.split(";")) {
-    const [key, ...valueParts] = entry.trim().split("=");
-    if (key === name) {
-      try {
-        return decodeURIComponent(valueParts.join("="));
-      } catch {
-        return "";
-      }
-    }
-  }
-  return "";
-}
-
-function getCookieValue(
-  cookieHeader: string | null,
-  name: string,
-): string | null {
-  if (!cookieHeader) return null;
-  const match = cookieHeader
-    .split(";")
-    .map((c) => c.trim())
-    .find((c) => c.startsWith(`${name}=`));
-  return match ? decodeURIComponent(match.split("=").slice(1).join("=")) : null;
-}
-
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code")?.trim() || "";
@@ -79,7 +59,7 @@ export async function GET(request: Request) {
   }
 
   const verifiedState = await verifyOAuthState(state, authSecret);
-  const stateCookie = readCookie(request, "wtus-oauth-state");
+  const stateCookie = readRequestCookie(request, "wtus-oauth-state");
   if (!verifiedState || !stateCookie || stateCookie !== verifiedState.nonce) {
     return oauthErrorRedirect(url, appBaseUrl);
   }
@@ -92,10 +72,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // Retrieve PKCE code verifier from cookies
-  const cookieHeader = request.headers.get("cookie");
-  const codeVerifier = getCookieValue(cookieHeader, "oidc_pkce");
-
+  const codeVerifier = readRequestCookie(request, "oidc_pkce");
   if (!codeVerifier) {
     console.error("[AUTH] Missing PKCE code verifier cookie");
     return oauthErrorRedirect(url, appBaseUrl);
@@ -103,11 +80,8 @@ export async function GET(request: Request) {
 
   try {
     const config = await getOidcConfig();
-    const redirectUri =
-      (config as unknown as { _redirectUri?: string })._redirectUri ||
-      new URL("/api/auth/callback/wtus-auth", appBaseUrl).toString();
-
-    const callbackUrlObj = new URL(request.url);
+    const redirectUri = resolveOidcRedirectUri(config, appBaseUrl);
+    const callbackUrlObj = buildOidcCallbackUrl(redirectUri, url);
 
     const tokens = await authorizationCodeGrant(config, callbackUrlObj, {
       expectedState: state,

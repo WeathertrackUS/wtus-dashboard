@@ -39,10 +39,9 @@ export function getOidcConfig(): Promise<Configuration> {
     );
     const clientId = "wtus-dashboard";
     const clientSecret = getOidcClientSecret();
-    const redirectUri = new URL(
-      "/api/auth/callback/wtus-auth",
+    const redirectUri = buildOidcRedirectUri(
       process.env.APP_URL?.trim() || "http://127.0.0.1:3000",
-    ).toString();
+    );
 
     configPromise = discovery(
       issuerUrl,
@@ -59,6 +58,24 @@ export function getOidcConfig(): Promise<Configuration> {
       });
   }
   return configPromise;
+}
+
+export function buildOidcRedirectUri(appBaseUrl: string) {
+  return new URL("/api/auth/callback/wtus-auth", appBaseUrl).toString();
+}
+
+export function resolveOidcRedirectUri(config: Configuration, appBaseUrl: string) {
+  const configured = (config as Configuration & { _redirectUri?: string })._redirectUri;
+  return configured ?? buildOidcRedirectUri(appBaseUrl);
+}
+
+/** Canonical callback URL for token exchange (matches login redirect_uri + OAuth query params). */
+export function buildOidcCallbackUrl(redirectUri: string, requestUrl: URL) {
+  const callbackUrl = new URL(redirectUri);
+  for (const [key, value] of requestUrl.searchParams) {
+    callbackUrl.searchParams.set(key, value);
+  }
+  return callbackUrl;
 }
 
 export {

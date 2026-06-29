@@ -11,6 +11,7 @@ import {
   getOidcConfig,
   buildAuthorizationUrl,
   OIDC_LOGIN_SCOPE,
+  resolveOidcRedirectUri,
   randomPKCECodeVerifier,
   calculatePKCECodeChallenge,
 } from "../../../../src/lib/oidc";
@@ -57,9 +58,7 @@ export async function GET(request: Request) {
 
   try {
     const config = await getOidcConfig();
-    const redirectUri =
-      (config as unknown as { _redirectUri?: string })._redirectUri ||
-      new URL("/api/auth/callback/wtus-auth", appBaseUrl).toString();
+    const redirectUri = resolveOidcRedirectUri(config, appBaseUrl);
 
     // Generate PKCE
     const codeVerifier = randomPKCECodeVerifier();

@@ -3,6 +3,7 @@ import {
   buildSessionCookieName,
   createOAuthState,
   getAppBaseUrl,
+  readRequestCookie,
   resolveSafeRedirectUrl,
   sanitizeRedirectPath,
   useSecureSessionCookie,
@@ -71,6 +72,17 @@ describe("getAppBaseUrl", () => {
     });
 
     expect(getAppBaseUrl(request)).toBe(APP_BASE);
+  });
+});
+
+describe("readRequestCookie", () => {
+  it("reads a named cookie from the request header", () => {
+    const request = new Request("http://localhost:3000/", {
+      headers: { cookie: "oidc_pkce=verifier123; other=value" },
+    });
+
+    expect(readRequestCookie(request, "oidc_pkce")).toBe("verifier123");
+    expect(readRequestCookie(request, "missing")).toBeNull();
   });
 });
 

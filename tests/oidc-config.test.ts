@@ -62,3 +62,20 @@ describe("getOidcConfig discovery cache", () => {
     expect(mockDiscovery).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("OIDC redirect URI helpers", () => {
+  it("builds callback URL from canonical redirect URI and request query params", async () => {
+    const { buildOidcCallbackUrl, buildOidcRedirectUri } = await import("../src/lib/oidc");
+    const redirectUri = buildOidcRedirectUri("https://dashboard.weathertrackus.com");
+    const requestUrl = new URL(
+      "https://evil.com/api/auth/callback/wtus-auth?code=abc&state=xyz",
+    );
+
+    const callbackUrl = buildOidcCallbackUrl(redirectUri, requestUrl);
+
+    expect(callbackUrl.origin).toBe("https://dashboard.weathertrackus.com");
+    expect(callbackUrl.pathname).toBe("/api/auth/callback/wtus-auth");
+    expect(callbackUrl.searchParams.get("code")).toBe("abc");
+    expect(callbackUrl.searchParams.get("state")).toBe("xyz");
+  });
+});

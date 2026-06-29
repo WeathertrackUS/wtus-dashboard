@@ -57,6 +57,9 @@ function main() {
   }
 
   const oidcSecret = process.env.WTUS_DASHBOARD_OIDC_CLIENT_SECRET?.trim() || "";
+  if (oidcSecret && oidcSecret.length < 32) {
+    failures.push("WTUS_DASHBOARD_OIDC_CLIENT_SECRET must be at least 32 characters");
+  }
   if (oidcSecret && authSecret && oidcSecret === authSecret) {
     failures.push("WTUS_DASHBOARD_OIDC_CLIENT_SECRET must differ from AUTH_SECRET");
   }
