@@ -11,7 +11,6 @@ vi.mock("../src/auth", () => ({
 }));
 
 const mockPrismaTransaction = vi.fn();
-const mockPrismaLiveEventFindUnique = vi.fn();
 const mockPrismaLiveEventUpdate = vi.fn();
 const mockPrismaLiveEventUpdateCreate = vi.fn();
 const mockPrismaLiveEventFindUniqueOrThrow = vi.fn();
@@ -22,11 +21,6 @@ vi.mock("../src/db", () => ({
     return {
       get $transaction() {
         return mockPrismaTransaction;
-      },
-      liveEvent: {
-        get findUnique() {
-          return mockPrismaLiveEventFindUnique;
-        },
       },
       user: {
         get findUnique() {
@@ -119,7 +113,6 @@ describe("PATCH /api/live-events/:eventId", () => {
   it("allows operator to patch metadata", async () => {
     mockSession(OPERATOR_ID, ["owner"]);
     mockDiscordVerifiedUser(OPERATOR_ID, { globalRoles: ["owner"] });
-    mockPrismaLiveEventFindUnique.mockResolvedValue(makeLiveEventRecord());
     const updated = makeLiveEventRecord({
       name: "Updated Event",
       description: "New description",
@@ -152,7 +145,6 @@ describe("PATCH /api/live-events/:eventId", () => {
   it("appends a team update post with author", async () => {
     mockSession(OPERATOR_ID, ["operations_lead"]);
     mockDiscordVerifiedUser(OPERATOR_ID, { globalRoles: ["operations_lead"] });
-    mockPrismaLiveEventFindUnique.mockResolvedValue(makeLiveEventRecord());
     const updated = makeLiveEventRecord({
       updates: [
         {
@@ -189,18 +181,20 @@ describe("PATCH /api/live-events/:eventId", () => {
     const res = await callPatch(EVENT_ID, { name: "Blocked" });
 
     expect(res.status).toBe(403);
-    expect(mockPrismaLiveEventFindUnique).not.toHaveBeenCalled();
+    expect(mockPrismaTransaction).not.toHaveBeenCalled();
   });
 
   it("returns 404 for unknown event", async () => {
     mockSession(OPERATOR_ID, ["owner"]);
     mockDiscordVerifiedUser(OPERATOR_ID, { globalRoles: ["owner"] });
-    mockPrismaLiveEventFindUnique.mockResolvedValue(null);
+    mockPrismaLiveEventUpdate.mockRejectedValue({ code: "P2025", meta: {} });
+    mockTransaction();
 
     const res = await callPatch("missing-event", { name: "Nope" });
 
     expect(res.status).toBe(404);
-    expect(mockPrismaTransaction).not.toHaveBeenCalled();
+    const json = await res.json();
+    expect(json.error).toBe("Record not found");
   });
 
   it("returns 400 for empty body", async () => {
@@ -210,7 +204,7 @@ describe("PATCH /api/live-events/:eventId", () => {
     const res = await callPatch(EVENT_ID, {});
 
     expect(res.status).toBe(400);
-    expect(mockPrismaLiveEventFindUnique).not.toHaveBeenCalled();
+    expect(mockPrismaTransaction).not.toHaveBeenCalled();
   });
 
   it("returns 401 when unauthenticated", async () => {

@@ -12,11 +12,6 @@ export async function PATCH(request: Request, context: { params: Promise<{ event
   const parsed = await parseBody(PatchLiveEventSchema, request);
   if ("error" in parsed) return parsed.error;
 
-  const existing = await prisma.liveEvent.findUnique({ where: { id: eventId } });
-  if (!existing) {
-    return Response.json({ error: "Event not found" }, { status: 404 });
-  }
-
   const { name, description, briefing, update } = parsed.data;
 
   try {
@@ -25,7 +20,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ event
         await tx.liveEvent.update({
           where: { id: eventId },
           data: {
-            ...(name !== undefined && { name: name.trim() }),
+            ...(name !== undefined && { name }),
             ...(description !== undefined && { description: description.trim() || null }),
             ...(briefing !== undefined && { briefing: briefing.trim() || null }),
           },
@@ -36,7 +31,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ event
         await tx.liveEventUpdate.create({
           data: {
             liveEventId: eventId,
-            body: update.trim(),
+            body: update,
             createdById: access.access.userId,
           },
         });

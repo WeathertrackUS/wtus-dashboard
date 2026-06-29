@@ -69,11 +69,14 @@ export function mapLiveEventRecord(event: LiveEventRecord): LiveEvent {
   };
 }
 
+export const LIVE_EVENT_UPDATES_FETCH_LIMIT = 50;
+
 export const liveEventDetailInclude = {
   roles: true,
   assignments: true,
   updates: {
     orderBy: { createdAt: "desc" as const },
+    take: LIVE_EVENT_UPDATES_FETCH_LIMIT,
     include: {
       createdBy: { select: { name: true, handle: true, discordHandle: true } },
     },
