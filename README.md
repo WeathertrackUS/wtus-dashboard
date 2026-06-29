@@ -148,15 +148,16 @@ Production stack:
 - Next.js app router
 - PostgreSQL for local development and production
 - Prisma or Drizzle for schema/migrations
-- Auth.js with Discord OAuth
+- Auth.js with WTUS Auth (OIDC) for login
 - Discord.js bot package in the same repo once the dashboard foundation exists
 
 This keeps the project modern and easy to evolve without starting as a large distributed system.
 
-Production/auth/Discord configuration starts from `.env.example`. Put real local values in `.env`, which is intentionally ignored. Real Discord membership verification requires the WTUS Discord guild ID plus either OAuth guild access or bot member lookup.
+Production/auth configuration starts from `.env.example`. Put real local values in `.env`, which is intentionally ignored. See [docs/authentication.md](docs/authentication.md) for OIDC redirect URIs and login flow.
 
 ## Documentation
 
+- [Authentication](docs/authentication.md)
 - [Product Brief](docs/product-brief.md)
 - [Roles and Permissions](docs/roles-and-permissions.md)
 - [Data Model](docs/data-model.md)

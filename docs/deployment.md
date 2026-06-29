@@ -29,7 +29,7 @@ Recommended:
 - Reverse proxy: Nginx
 - Database: PostgreSQL
 - ORM: Prisma or Drizzle
-- Auth: Auth.js with Discord OAuth
+- Auth: WTUS Auth (OIDC) via `/api/auth/login`
 - Bot: Discord.js as a separate process in the same repo
 
 Use PostgreSQL for local development and production so the app is not switching database behavior when it moves to the VPS.
@@ -47,7 +47,9 @@ Before real team use:
 - Back up the database at least daily
 - Keep deployment instructions in the repo
 
-The main dashboard is behind Discord OAuth by default, including local testing. Local role preview and browser localStorage fallback only turn on when `NEXT_PUBLIC_ENABLE_LOCAL_PREVIEW=true`. Onboarding links stay reachable so a new member can connect Discord before their dashboard account exists.
+The main dashboard is behind WTUS Auth in all environments. Local role preview and browser localStorage fallback only turn on when `NEXT_PUBLIC_ENABLE_LOCAL_PREVIEW=true`. Onboarding links stay reachable so a new member can sign in before their dashboard account exists.
+
+Run `pnpm validate:auth` before deploying to confirm required auth variables are set.
 
 ## Minimum Environment Variables
 
@@ -56,32 +58,29 @@ Create `.env` from `.env.example`. The first production pass should expect:
 - `DATABASE_URL`
 - `AUTH_SECRET`
 - `APP_URL`
-- `DISCORD_CLIENT_ID`
-- `DISCORD_CLIENT_SECRET`
+- `NEXTAUTH_URL`
+- `WTUS_DASHBOARD_OIDC_CLIENT_SECRET`
+- `OIDC_ISSUER_URL`
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_GUILD_ID`
+- `DISCORD_CLIENT_ID` (bot application)
 - `DISCORD_TASK_ALERT_CHANNEL_ID`
 - `DISCORD_AVAILABILITY_ALERT_CHANNEL_ID`
 - `DISCORD_LIVE_EVENT_ALERT_CHANNEL_ID`
 - Mail provider settings if invitations or password resets are enabled
 
-`DISCORD_GUILD_ID` is required before the app can verify that an onboarding signup is actually in the WTUS Discord server.
+`DISCORD_GUILD_ID` is required for bot server verification. User login guild checks come from the WTUS Auth `wtus_member` OIDC claim.
 
-## Discord OAuth Redirects
+## WTUS Auth redirect URIs
 
-Discord requires an exact redirect match. For local testing with this repo's dev server, add this redirect in the Discord Developer Portal:
-
-```text
-http://127.0.0.1:3000/api/auth/callback/discord
-```
-
-For the VPS, add the public HTTPS version too:
+Register these on the `wtus-dashboard` client at WTUS Auth:
 
 ```text
-https://your-domain.example/api/auth/callback/discord
+http://127.0.0.1:3000/api/auth/callback/wtus-auth
+https://your-domain.example/api/auth/callback/wtus-auth
 ```
 
-`APP_URL` and `NEXTAUTH_URL` must use the same origin as the redirect you are testing. `localhost` and `127.0.0.1` do not count as the same URL to Discord.
+`APP_URL` and `NEXTAUTH_URL` must use the same origin as the redirect you are testing. `localhost` and `127.0.0.1` do not count as the same URL to OIDC redirect matching.
 
 ## Deployment Flow
 
@@ -126,7 +125,7 @@ pnpm db:deploy
 
 The app does not auto-promote the first Discord login. To bootstrap leadership:
 
-1. Have the person sign in with Discord and finish onboarding.
+1. Have the person sign in through WTUS Auth and finish onboarding.
 2. Get their Discord user ID.
 3. Run one of these commands:
 

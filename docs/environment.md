@@ -8,22 +8,51 @@ Do not commit `.env`. It is ignored by git on purpose.
 
 Use `.env.example` as the shared checklist for required variables.
 
+See [Authentication](authentication.md) for the full login flow.
+
 ## Local Development
 
 For local development, start with:
 
 ```env
-APP_URL=http://localhost:3000
-NEXTAUTH_URL=http://localhost:3000
+APP_URL=http://127.0.0.1:3000
+NEXTAUTH_URL=http://127.0.0.1:3000
 AUTH_SECRET=replace-with-a-long-random-secret
+WTUS_DASHBOARD_OIDC_CLIENT_SECRET=replace-with-a-different-long-random-secret
+OIDC_ISSUER_URL=https://auth.weathertrackus.com
 DATABASE_URL=postgresql://wtus:wtus@localhost:5432/wtus_dashboard
 ```
 
-When Discord is ready, fill in:
+Register `http://127.0.0.1:3000/api/auth/callback/wtus-auth` on the `wtus-dashboard` OIDC client at WTUS Auth.
+
+Validate your config:
+
+```bash
+pnpm validate:auth
+```
+
+## WTUS Auth (dashboard login)
+
+All environments use WTUS Auth as the only dashboard sign-in path:
+
+1. User opens `/api/auth/login` on the dashboard.
+2. Browser redirects to `https://auth.weathertrackus.com` (Discord handled at the IdP).
+3. IdP redirects back to `{APP_URL}/api/auth/callback/wtus-auth`.
+4. Dashboard creates a database session.
+
+Required variables:
+
+- `OIDC_ISSUER_URL`
+- `WTUS_DASHBOARD_OIDC_CLIENT_SECRET`
+- `APP_URL` and `NEXTAUTH_URL` (same origin)
+- `AUTH_SECRET` (must differ from the OIDC client secret)
+
+## Discord bot
+
+Bot variables are separate from login:
 
 ```env
 DISCORD_CLIENT_ID=
-DISCORD_CLIENT_SECRET=
 DISCORD_BOT_TOKEN=
 DISCORD_GUILD_ID=
 ```
@@ -36,70 +65,16 @@ DISCORD_AVAILABILITY_ALERT_CHANNEL_ID=
 DISCORD_LIVE_EVENT_ALERT_CHANNEL_ID=
 ```
 
-## Discord OAuth
-
-OAuth should be the main login and onboarding path.
-
-It gives the app:
-
-- The user's Discord identity
-- A stable Discord user ID
-- A clean sign-in flow
-- A natural way to connect dashboard accounts to Discord accounts
-
-The app should request the smallest practical scopes first:
-
-- `identify`
-- `guilds`, if using OAuth to inspect the user's server list
-
-If OAuth guild checks are not enough for the final server verification behavior, the bot can do a server-side member lookup using `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID`.
-
-Recommended first approach:
-
-1. Use Discord OAuth for login.
-2. Store the Discord user ID on the dashboard user.
-3. Check whether that Discord user is in `DISCORD_GUILD_ID`.
-4. Let the bot handle ongoing Discord commands and alerts.
-
-### First Owner Setup
-
-After the database is migrated and seeded, the first Discord user who signs in and passes the WTUS guild check is automatically assigned:
-
-- `member`
-- `owner`
-
-That gives the initial operator a clean way to open the dashboard, create onboarding links, and add the operations lead without manually editing the database.
-
-After that first owner exists, new verified Discord users get the `member` global role. Owner and operations lead role changes should happen from the dashboard's member management flow.
-
-### Discord Developer Portal Setup
-
-In the Discord Developer Portal, open the WTUS application and set:
-
-- OAuth2 redirect for local development: `http://localhost:3000/api/auth/callback/discord`
-- OAuth2 redirect for VPS production: `https://your-dashboard-domain.com/api/auth/callback/discord`
-
-The redirect must exactly match the app URL. If `.env` uses `NEXTAUTH_URL=http://localhost:3000`, use the localhost redirect above. If you test on `http://127.0.0.1:3000`, either switch `.env` to `NEXTAUTH_URL=http://127.0.0.1:3000` and add `http://127.0.0.1:3000/api/auth/callback/discord`, or keep opening the app at `http://localhost:3000`.
-
-Common causes of Discord's invalid OAuth link:
-
-- `DISCORD_CLIENT_ID` is missing or from the wrong Discord application.
-- `DISCORD_CLIENT_SECRET` is missing or from the wrong Discord application.
-- The redirect URI is not listed in OAuth2 redirects.
-- `NEXTAUTH_URL` does not match the host and port being used.
-- The app was not restarted after changing `.env`.
-
 ## Onboarding Links
 
 Owner and operations lead users create invite links from Team Setup.
 
-The invite page expects the incoming member to connect Discord first. The dashboard then uses the signed-in Discord account instead of trusting a manually typed Discord user ID.
+The invite page expects the incoming member to sign in through WTUS Auth first. The dashboard uses the signed-in session's Discord identity from OIDC claims.
 
 The invite completion route requires:
 
 - A valid open invite token
-- A signed-in Discord OAuth session
-- A verified match against `DISCORD_GUILD_ID`
+- A signed-in session with `discordServerVerified`
 
 Used or disabled invite links cannot complete onboarding.
 
@@ -124,20 +99,8 @@ Recommended production stack:
 - React
 - TypeScript
 - PostgreSQL
-- Prisma or Drizzle
-- Auth.js with Discord OAuth
+- Prisma
+- WTUS Auth (OIDC) for login
 - Discord.js for the bot
 - Nginx reverse proxy
 - Systemd services for the app and bot
-
-Why this fits WTUS:
-
-- One repo
-- One database
-- One VPS
-- Server-rendered app routes where auth matters
-- API routes for dashboard and bot workflows
-- Easy environment variable setup
-- Not overbuilt
-
-The app now uses Next.js so real auth, database persistence, and Discord verification can live in server-side routes instead of being bolted onto a static client shell.

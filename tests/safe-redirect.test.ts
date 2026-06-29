@@ -1,8 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  buildSessionCookieName,
   createOAuthState,
+  getAppBaseUrl,
+  readRequestCookie,
   resolveSafeRedirectUrl,
   sanitizeRedirectPath,
+  useSecureSessionCookie,
   verifyOAuthState,
 } from "../src/server/safe-redirect";
 
@@ -47,6 +51,61 @@ describe("sanitizeRedirectPath", () => {
 
   it("rejects absolute URLs even outside production", () => {
     expect(sanitizeRedirectPath("http://127.0.0.1:3000/tasks", { isProduction: false })).toBe("/");
+  });
+});
+
+describe("getAppBaseUrl", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("uses configured APP_URL in production even with hostile forwarded headers", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("APP_URL", APP_BASE);
+
+    const request = new Request("https://evil.com/api/auth/callback/wtus-auth", {
+      headers: {
+        host: "evil.com",
+        "x-forwarded-host": "evil.com",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    expect(getAppBaseUrl(request)).toBe(APP_BASE);
+  });
+});
+
+describe("readRequestCookie", () => {
+  it("reads a named cookie from the request header", () => {
+    const request = new Request("http://localhost:3000/", {
+      headers: { cookie: "oidc_pkce=verifier123; other=value" },
+    });
+
+    expect(readRequestCookie(request, "oidc_pkce")).toBe("verifier123");
+    expect(readRequestCookie(request, "missing")).toBeNull();
+  });
+});
+
+describe("session cookie naming", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("uses __Secure- prefix when NEXTAUTH_URL is https, regardless of NODE_ENV", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("NEXTAUTH_URL", "https://staging.weathertrackus.com");
+
+    expect(buildSessionCookieName()).toBe("__Secure-next-auth.session-token");
+    expect(useSecureSessionCookie()).toBe(true);
+  });
+
+  it("uses plain cookie name for local http origins", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("NEXTAUTH_URL", "http://127.0.0.1:3000");
+    vi.stubEnv("APP_URL", "http://127.0.0.1:3000");
+
+    expect(buildSessionCookieName("http://127.0.0.1:3000")).toBe("next-auth.session-token");
+    expect(useSecureSessionCookie("http://127.0.0.1:3000")).toBe(false);
   });
 });
 

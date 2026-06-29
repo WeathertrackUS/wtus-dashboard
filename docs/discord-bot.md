@@ -77,7 +77,7 @@ The first connected build needs the variables listed in `.env.example`:
 
 The dashboard cannot honestly verify Discord server membership until `DISCORD_GUILD_ID` and either OAuth guild access or bot member lookup are configured.
 
-Use Discord OAuth as the main dashboard login/onboarding path. The bot should still exist, but its first job should be server membership lookup, commands, and alerts rather than replacing login.
+Dashboard login uses WTUS Auth (OIDC); Discord identity is federated at the IdP. The bot should still exist for server membership lookup, commands, and alerts.
 
 ## Permissions
 

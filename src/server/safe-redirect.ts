@@ -54,33 +54,39 @@ function hasPathTraversal(value: string) {
 }
 
 export function getAuthSecret() {
-  return (
-    process.env.AUTH_SECRET?.trim() ||
-    process.env.WTUS_DASHBOARD_OIDC_CLIENT_SECRET?.trim() ||
-    ""
-  );
+  return process.env.AUTH_SECRET?.trim() || "";
+}
+
+function requestOriginFromHeaders(request: Request) {
+  const headers = request.headers;
+  const forwardedHost =
+    headers.get("x-forwarded-host")?.split(",")[0]?.trim() || headers.get("host")?.trim() || "";
+  const forwardedProto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "";
+  return forwardedHost && forwardedProto
+    ? `${forwardedProto}://${forwardedHost}`
+    : new URL(request.url).origin;
 }
 
 export function getAppBaseUrl(request: Request) {
-  const headers = request.headers;
-  const forwardedHost = headers.get("x-forwarded-host")?.split(",")[0]?.trim() || headers.get("host")?.trim() || "";
-  const forwardedProto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "";
-  const requestOrigin =
-    forwardedHost && forwardedProto ? `${forwardedProto}://${forwardedHost}` : new URL(request.url).origin;
   const configuredUrl = process.env.APP_URL?.trim() || process.env.NEXTAUTH_URL?.trim() || "";
+  const isProduction = process.env.NODE_ENV === "production";
 
-  if (!configuredUrl) return requestOrigin;
-
-  try {
-    const configured = new URL(configuredUrl);
-    if (configured.hostname === "localhost" || configured.hostname === "127.0.0.1") {
-      return requestOrigin;
+  if (configuredUrl) {
+    try {
+      const configured = new URL(configuredUrl);
+      if (isProduction) {
+        return configured.origin;
+      }
+      if (configured.hostname === "localhost" || configured.hostname === "127.0.0.1") {
+        return requestOriginFromHeaders(request);
+      }
+      return configured.origin;
+    } catch {
+      // Fall through to request origin in development only.
     }
-  } catch {
-    return requestOrigin;
   }
 
-  return configuredUrl;
+  return requestOriginFromHeaders(request);
 }
 
 export function isLocalAppUrl(value: string) {
@@ -90,6 +96,47 @@ export function isLocalAppUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+function isHttpsUrl(value: string) {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Mirrors NextAuth v4 session cookie naming (see next-auth/jwt). */
+export function useSecureSessionCookie(appBaseUrl?: string) {
+  const configured = process.env.NEXTAUTH_URL?.trim() || process.env.APP_URL?.trim() || "";
+  if (configured.startsWith("https://")) return true;
+  if (process.env.VERCEL) return true;
+  if (appBaseUrl) return isHttpsUrl(appBaseUrl);
+  return false;
+}
+
+export function buildSessionCookieName(appBaseUrl?: string) {
+  return useSecureSessionCookie(appBaseUrl)
+    ? "__Secure-next-auth.session-token"
+    : "next-auth.session-token";
+}
+
+export function readRequestCookie(request: Request, name: string): string | null {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) return null;
+
+  for (const entry of cookieHeader.split(";")) {
+    const [key, ...valueParts] = entry.trim().split("=");
+    if (key === name) {
+      try {
+        return decodeURIComponent(valueParts.join("="));
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
 }
 
 export function sanitizeRedirectPath(input: string, options: SanitizeOptions = {}) {

@@ -2,6 +2,10 @@ server {
   listen 80;
   server_name dashboard.example.com;
 
+  # Terminate TLS at Nginx in production. Set APP_URL to the public https:// origin.
+  # Forward Host and X-Forwarded-Proto from the real listener so the app can build
+  # same-origin redirects without trusting client-supplied Host on a direct Node port.
+
   location / {
     proxy_pass http://127.0.0.1:3000;
     proxy_http_version 1.1;

@@ -6,6 +6,7 @@ const APP_BASE = "https://dashboard.weathertrackus.com";
 const STATE_NONCE = "browser-bound-state-nonce";
 
 const mockPrismaUserUpsert = vi.fn();
+const mockPrismaUserFindUnique = vi.fn();
 const mockPrismaSessionCreate = vi.fn();
 const mockAuthorizationCodeGrant = vi.fn();
 const mockGetOidcConfig = vi.fn();
@@ -17,6 +18,9 @@ vi.mock("../src/db", () => ({
         get upsert() {
           return mockPrismaUserUpsert;
         },
+        get findUnique() {
+          return mockPrismaUserFindUnique;
+        },
       },
       session: {
         get create() {
@@ -27,21 +31,25 @@ vi.mock("../src/db", () => ({
   },
 }));
 
-vi.mock("../src/lib/oidc", () => ({
-  getOidcConfig: (...args: unknown[]) => mockGetOidcConfig(...args),
-  authorizationCodeGrant: (...args: unknown[]) => mockAuthorizationCodeGrant(...args),
-  buildAuthorizationUrl: vi.fn(
-    (_config: unknown, params: Record<string, string>) => {
-      const url = new URL("https://auth.weathertrackus.com/authorize");
-      for (const [key, value] of Object.entries(params)) {
-        url.searchParams.set(key, value);
-      }
-      return url.toString();
-    },
-  ),
-  randomPKCECodeVerifier: vi.fn(() => "mock-code-verifier"),
-  calculatePKCECodeChallenge: vi.fn(() => Promise.resolve("mock-challenge")),
-}));
+vi.mock("../src/lib/oidc", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/oidc")>();
+  return {
+    ...actual,
+    getOidcConfig: (...args: unknown[]) => mockGetOidcConfig(...args),
+    authorizationCodeGrant: (...args: unknown[]) => mockAuthorizationCodeGrant(...args),
+    buildAuthorizationUrl: vi.fn(
+      (_config: unknown, params: Record<string, string>) => {
+        const url = new URL("https://auth.weathertrackus.com/authorize");
+        for (const [key, value] of Object.entries(params)) {
+          url.searchParams.set(key, value);
+        }
+        return url.toString();
+      },
+    ),
+    randomPKCECodeVerifier: vi.fn(() => "mock-code-verifier"),
+    calculatePKCECodeChallenge: vi.fn(() => Promise.resolve("mock-challenge")),
+  };
+});
 
 async function createBoundState(callbackPath: string) {
   return createOAuthStateForNonce(callbackPath, AUTH_SECRET, STATE_NONCE);
@@ -63,6 +71,7 @@ describe("wtus-auth callback redirect", () => {
     vi.stubEnv("NODE_ENV", "production");
 
     mockPrismaUserUpsert.mockResolvedValue({ id: "db-user-1" });
+    mockPrismaUserFindUnique.mockResolvedValue(null);
     mockPrismaSessionCreate.mockResolvedValue({ id: "session-1" });
     mockAuthorizationCodeGrant.mockReset();
     mockGetOidcConfig.mockReset();
@@ -169,6 +178,28 @@ describe("wtus-auth callback redirect", () => {
 
     expect(response.headers.get("location")).toBe(`${APP_BASE}/`);
   });
+
+  it("redirects to configured APP_URL after login even with hostile forwarded host", async () => {
+    const state = await createBoundState("/");
+    const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
+
+    const response = await GET(
+      new Request(
+        `https://evil.com/api/auth/callback/wtus-auth?code=abc123&state=${encodeURIComponent(state)}`,
+        {
+          headers: {
+            cookie: `wtus-oauth-state=${STATE_NONCE}; oidc_pkce=mock-pkce-verifier`,
+            host: "evil.com",
+            "x-forwarded-host": "evil.com",
+            "x-forwarded-proto": "https",
+          },
+        },
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(`${APP_BASE}/`);
+    expect(mockAuthorizationCodeGrant).toHaveBeenCalled();
+  });
 });
 
 describe("auth login route", () => {
@@ -204,6 +235,7 @@ describe("auth login route", () => {
     const loginUrl = new URL(location!);
     const state = loginUrl.searchParams.get("state");
     expect(state).toBeTruthy();
+    expect(loginUrl.searchParams.get("scope")).toBe("openid profile email");
 
     const { verifyOAuthState } = await import("../src/server/safe-redirect");
     const verifiedState = await verifyOAuthState(state!, AUTH_SECRET);
