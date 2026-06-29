@@ -236,18 +236,10 @@ export const UpdateInviteSchema = z.object({
 });
 
 export const CompleteOnboardingSchema = z.object({
-  token: z.string().optional(),
+  token: z.string().min(1).optional(),
   name: NonEmptyStringSchema,
   handle: NonEmptyStringSchema,
-  sections: z
-    .array(
-      z.object({
-        section: SectionKeySchema,
-        role: SectionRoleSchema,
-      })
-    )
-    .optional()
-    .default([]),
+  sections: z.array(SectionKeySchema).optional().default([]),
 });
 
 export const CreateReminderPreferenceSchema = z.object({

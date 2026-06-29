@@ -5,34 +5,51 @@ import { parseBody, handleApiError } from "../../../../src/server/validation";
 import { apiError } from "../../../../src/server/api-response";
 import type { Member } from "../../../../src/types";
 
+class InviteNotOpenError extends Error {
+  constructor() {
+    super("Invite is not open");
+    this.name = "InviteNotOpenError";
+  }
+}
+
 export async function POST(request: Request) {
   const access = await requireDiscordVerifiedUser();
   if ("response" in access) return access.response;
 
+  if (access.user.onboardingStatus === "verified" && access.user.status === "active") {
+    return apiError("Onboarding already completed", 409);
+  }
+
   const parsed = await parseBody(CompleteOnboardingSchema, request);
   if ("error" in parsed) return parsed.error;
 
-  const { token, name, handle, sections: selectedSections } = parsed.data;
+  const { token, name, handle, sections: sectionKeys } = parsed.data;
+  const uniqueSectionKeys = [...new Set(sectionKeys)];
 
   try {
-    const invite = token
-      ? await prisma.onboardingInvite.findUnique({
-          where: { token },
-          include: {
-            createdBy: {
-              include: { globalRoles: { include: { role: true } } },
-            },
-          },
-        })
-      : null;
-    if (token && (!invite || invite.status !== "open")) {
-      return apiError("Invite is not open", 409);
-    }
-
     const result = await prisma.$transaction(async (tx) => {
+      if (token) {
+        const claim = await tx.onboardingInvite.updateMany({
+          where: { token, status: "open" },
+          data: {
+            status: "used",
+            usedByUserId: access.userId,
+            usedAt: new Date(),
+          },
+        });
+        if (claim.count !== 1) {
+          throw new InviteNotOpenError();
+        }
+      }
+
+      const sections = await tx.section.findMany({ where: { key: { in: uniqueSectionKeys } } });
+      if (sections.length !== uniqueSectionKeys.length) {
+        const found = new Set(sections.map((section) => section.key));
+        const unknown = uniqueSectionKeys.filter((key) => !found.has(key));
+        throw Object.assign(new Error(`Unknown sections: ${unknown.join(", ")}`), { statusCode: 400 });
+      }
+
       const memberRole = await tx.globalRole.findUnique({ where: { key: "member" } });
-      const sectionKeys = selectedSections.map((s) => s.section);
-      const sections = await tx.section.findMany({ where: { key: { in: sectionKeys } } });
       const user = await tx.user.update({
         where: { id: access.userId },
         data: {
@@ -53,26 +70,26 @@ export async function POST(request: Request) {
       }
 
       for (const section of sections) {
-        const membership = selectedSections.find((s) => s.section === section.key);
         await tx.sectionMembership.upsert({
           where: { userId_sectionId: { userId: user.id, sectionId: section.id } },
-          update: { role: membership?.role ?? "member" },
-          create: { userId: user.id, sectionId: section.id, role: membership?.role ?? "member" },
+          update: { role: "member" },
+          create: { userId: user.id, sectionId: section.id, role: "member" },
         });
       }
 
-      const usedInvite = invite
-        ? await tx.onboardingInvite.update({
-            where: { id: invite.id },
-            data: {
-              status: "used",
-              usedByUserId: user.id,
-              usedAt: new Date(),
+      const usedInvite = token
+        ? await tx.onboardingInvite.findUnique({
+            where: { token },
+            include: {
+              createdBy: {
+                include: { globalRoles: { include: { role: true } } },
+              },
             },
           })
         : null;
 
-      const creatorRoles = invite?.createdBy?.globalRoles.map((gr) => gr.role.key) ?? [];
+      const creatorRoles = usedInvite?.createdBy?.globalRoles.map((gr) => gr.role.key) ?? [];
+      const memberSections = uniqueSectionKeys.map((section) => ({ section, role: "member" as const }));
 
       return {
         member: {
@@ -82,7 +99,7 @@ export async function POST(request: Request) {
           discordUserId: user.discordUserId ?? undefined,
           onboardingStatus: user.onboardingStatus,
           globalRoles: ["member"],
-          sections: selectedSections.map((s) => ({ section: s.section, role: s.role })),
+          sections: memberSections,
         } satisfies Member,
         invite: usedInvite
           ? {
@@ -100,6 +117,12 @@ export async function POST(request: Request) {
 
     return Response.json(result);
   } catch (error) {
+    if (error instanceof InviteNotOpenError) {
+      return apiError("Invite is not open", 409);
+    }
+    if (error instanceof Error && "statusCode" in error && error.statusCode === 400) {
+      return apiError(error.message, 400);
+    }
     return handleApiError(error);
   }
 }
