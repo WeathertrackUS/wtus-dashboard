@@ -11,8 +11,13 @@ let configPromise: Promise<Configuration> | null = null;
 
 export function getOidcClientSecret() {
   const secret = process.env.WTUS_DASHBOARD_OIDC_CLIENT_SECRET?.trim() || "";
-  if (!secret && process.env.NODE_ENV === "production") {
-    throw new Error("WTUS_DASHBOARD_OIDC_CLIENT_SECRET is required in production");
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("WTUS_DASHBOARD_OIDC_CLIENT_SECRET is required in production");
+    }
+    console.warn(
+      "[OIDC] WTUS_DASHBOARD_OIDC_CLIENT_SECRET is not set — OIDC token exchange will fail",
+    );
   }
   return secret;
 }

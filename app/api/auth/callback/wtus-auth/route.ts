@@ -205,8 +205,14 @@ export async function GET(request: Request) {
 
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown_error";
-    console.error("[AUTH] OIDC token exchange/verification failed:", message);
+    if (error instanceof Error) {
+      console.error("[AUTH] OIDC token exchange/verification failed:", error.message);
+      if (error.stack) {
+        console.error(error.stack);
+      }
+    } else {
+      console.error("[AUTH] OIDC token exchange/verification failed:", String(error));
+    }
     return oauthErrorRedirect(url, appBaseUrl);
   }
 }

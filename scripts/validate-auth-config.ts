@@ -62,13 +62,29 @@ function main() {
   }
 
   if (isProduction) {
-    for (const name of ["APP_URL", "NEXTAUTH_URL"] as const) {
+    for (const name of ["APP_URL", "NEXTAUTH_URL", "OIDC_ISSUER_URL"] as const) {
       const result = checkUrl(name, { requireHttps: true, forbidLocalhost: true });
       if (!result.ok) failures.push(result.message);
     }
   }
 
-  const appUrl = process.env.APP_URL?.trim();
+  const appUrlRaw = process.env.APP_URL?.trim();
+  const nextauthUrlRaw = process.env.NEXTAUTH_URL?.trim();
+  if (appUrlRaw && nextauthUrlRaw) {
+    try {
+      const appOrigin = new URL(appUrlRaw).origin;
+      const nextauthOrigin = new URL(nextauthUrlRaw).origin;
+      if (appOrigin !== nextauthOrigin) {
+        failures.push(
+          `APP_URL (${appOrigin}) and NEXTAUTH_URL (${nextauthOrigin}) must share the same origin`,
+        );
+      }
+    } catch {
+      // Individual URL validation already captured above.
+    }
+  }
+
+  const appUrl = appUrlRaw;
   if (appUrl) {
     try {
       const redirectUri = new URL("/api/auth/callback/wtus-auth", appUrl).toString();
