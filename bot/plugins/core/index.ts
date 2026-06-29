@@ -14,6 +14,7 @@ import { fetchLeantimeTasks } from "../../../src/server/leantime";
 import type { AvailabilityStatus, ReminderFrequency } from "../../../src/types";
 import type { BotPlugin, PluginContext } from "../../types";
 import type { Scheduler } from "../../core/scheduler";
+import { respondToSpecialRequest } from "./special-request";
 
 const briefHourUtc = Number(process.env.DISCORD_BRIEF_HOUR_UTC ?? 14);
 const sentBriefs = new Set<string>();
@@ -393,19 +394,33 @@ export class CorePlugin implements BotPlugin {
       await interaction.reply({ content: "Connect your Discord account to the WTUS dashboard first.", ephemeral: true });
       return;
     }
-    const existing = await prisma.specialRequest.findUnique({ where: { id: requestId } });
-    if (!existing || existing.targetUserId !== user.id) {
-      await interaction.reply({ content: "That request is no longer available for your account.", ephemeral: true });
+
+    const result = await respondToSpecialRequest(requestId, user.id, response);
+    if (!result.ok) {
+      const message =
+        result.reason === "already_handled"
+          ? "That request was already handled."
+          : "That request is no longer available for your account.";
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp({ content: message, ephemeral: true });
+        } else {
+          await interaction.reply({ content: message, ephemeral: true });
+        }
+      } catch {
+        // Duplicate clicks can arrive after the first interaction was acknowledged.
+      }
       return;
     }
-    await prisma.specialRequest.update({
-      where: { id: requestId },
-      data: { status: response, respondedAt: new Date() },
-    });
-    await interaction.update({
-      content: `WTUS special request ${response === "accepted" ? "accepted" : "declined"}.`,
-      components: [],
-    });
+
+    try {
+      await interaction.update({
+        content: `WTUS special request ${response === "accepted" ? "accepted" : "declined"}.`,
+        components: [],
+      });
+    } catch {
+      // A concurrent duplicate click may have already updated this interaction.
+    }
   }
 }
 
