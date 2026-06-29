@@ -184,10 +184,10 @@ describe("PATCH /api/live-events/:eventId", () => {
     expect(mockPrismaTransaction).not.toHaveBeenCalled();
   });
 
-  it("returns 404 for unknown event", async () => {
+  it("returns 404 when patching metadata for unknown event", async () => {
     mockSession(OPERATOR_ID, ["owner"]);
     mockDiscordVerifiedUser(OPERATOR_ID, { globalRoles: ["owner"] });
-    mockPrismaLiveEventUpdate.mockRejectedValue({ code: "P2025", meta: {} });
+    mockPrismaLiveEventFindUniqueOrThrow.mockRejectedValue({ code: "P2025", meta: {} });
     mockTransaction();
 
     const res = await callPatch("missing-event", { name: "Nope" });
@@ -195,6 +195,23 @@ describe("PATCH /api/live-events/:eventId", () => {
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json.error).toBe("Record not found");
+    expect(mockPrismaLiveEventUpdate).not.toHaveBeenCalled();
+    expect(mockPrismaLiveEventUpdateCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when posting update for unknown event", async () => {
+    mockSession(OPERATOR_ID, ["owner"]);
+    mockDiscordVerifiedUser(OPERATOR_ID, { globalRoles: ["owner"] });
+    mockPrismaLiveEventFindUniqueOrThrow.mockRejectedValue({ code: "P2025", meta: {} });
+    mockTransaction();
+
+    const res = await callPatch("missing-event", { update: "Team rotation complete" });
+
+    expect(res.status).toBe(404);
+    const json = await res.json();
+    expect(json.error).toBe("Record not found");
+    expect(mockPrismaLiveEventUpdate).not.toHaveBeenCalled();
+    expect(mockPrismaLiveEventUpdateCreate).not.toHaveBeenCalled();
   });
 
   it("returns 400 for empty body", async () => {

@@ -16,6 +16,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ event
 
   try {
     const liveEvent = await prisma.$transaction(async (tx) => {
+      await tx.liveEvent.findUniqueOrThrow({
+        where: { id: eventId },
+        select: { id: true },
+      });
+
       if (name !== undefined || description !== undefined || briefing !== undefined) {
         await tx.liveEvent.update({
           where: { id: eventId },
