@@ -35,6 +35,10 @@ export class LeantimeNotConfiguredError extends LeantimeError {
   constructor(method: string, correlationId: string) {
     super(method, correlationId, "LEANTIME_API_KEY is not configured");
   }
+
+  override httpStatus(): number {
+    return 503;
+  }
 }
 
 export class LeantimeTimeoutError extends LeantimeError {

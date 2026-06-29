@@ -34,6 +34,30 @@ function hungFetch() {
   );
 }
 
+function slowBodyFetch() {
+  return vi.fn((_url: string, init?: RequestInit) => {
+    const response = new Response(null, {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+    vi.spyOn(response, "text").mockImplementation(
+      () =>
+        new Promise<string>((_resolve, reject) => {
+          if (init?.signal?.aborted) {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+            return;
+          }
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    );
+
+    return Promise.resolve(response);
+  });
+}
+
 async function loadLeantime() {
   return import("../src/server/leantime");
 }
@@ -79,6 +103,21 @@ describe("Leantime RPC client", () => {
         priority: "normal",
       }),
     ).rejects.toBeInstanceOf(LeantimeTimeoutError);
+  });
+
+  it("times out when headers arrive quickly but the body never completes", async () => {
+    fetchMock.mockImplementation(slowBodyFetch());
+
+    const { fetchLeantimeTasks } = await loadLeantime();
+    const result = await fetchLeantimeTasks();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result).toMatchObject({
+      configured: true,
+      tasks: [],
+      degraded: true,
+      errorKind: "timeout",
+    });
   });
 
   it("retries HTTP 500 and succeeds", async () => {
@@ -206,5 +245,12 @@ describe("Leantime error helpers", () => {
       message: "upstream failed",
     });
     expect(error.httpStatus()).toBe(502);
+  });
+
+  it("maps not-configured write failures to 503", async () => {
+    const { LeantimeNotConfiguredError } = await import("../src/server/leantime-errors");
+    const error = new LeantimeNotConfiguredError("leantime.rpc.tickets.getAll", "lt-abc");
+
+    expect(error.httpStatus()).toBe(503);
   });
 });

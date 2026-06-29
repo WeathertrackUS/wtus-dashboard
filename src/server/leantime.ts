@@ -146,15 +146,24 @@ async function rpcAttempt<T>(
       signal: controller.signal,
     });
   } catch (error) {
+    clearTimeout(timeout);
     if (error instanceof Error && error.name === "AbortError") {
       throw new LeantimeTimeoutError(method, correlationId, timeoutMs);
     }
     throw new LeantimeTransportError(method, correlationId, `Leantime network error for ${method}`, { retryable: true });
-  } finally {
-    clearTimeout(timeout);
   }
 
-  const rawBody = await response.text();
+  let rawBody: string;
+  try {
+    rawBody = await response.text();
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new LeantimeTimeoutError(method, correlationId, timeoutMs);
+    }
+    throw new LeantimeTransportError(method, correlationId, `Leantime network error for ${method}`, { retryable: true });
+  }
+  clearTimeout(timeout);
   let payload: JsonRpcResponse<T> | null = null;
   if (rawBody) {
     try {

@@ -49,8 +49,8 @@ export async function GET(request: Request) {
     });
 
     if (result.degraded && result.error) {
-      const status = result.errorKind === "not_configured" ? 200 : result.errorKind === "timeout" ? 503 : 502;
-      return Response.json(result, { status });
+      const httpStatus = result.errorKind === "not_configured" ? 200 : result.errorKind === "timeout" ? 503 : 502;
+      return Response.json(result, { status: httpStatus });
     }
 
     return Response.json(result);
