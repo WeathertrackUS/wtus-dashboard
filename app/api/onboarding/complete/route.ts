@@ -26,6 +26,17 @@ export async function POST(request: Request) {
   const { token, name, handle, sections: sectionKeys } = parsed.data;
   const uniqueSectionKeys = [...new Set(sectionKeys)];
 
+  const invitePreview = token
+    ? await prisma.onboardingInvite.findUnique({
+        where: { token },
+        include: {
+          createdBy: {
+            include: { globalRoles: { include: { role: true } } },
+          },
+        },
+      })
+    : null;
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       if (token) {
@@ -77,18 +88,6 @@ export async function POST(request: Request) {
         });
       }
 
-      const usedInvite = token
-        ? await tx.onboardingInvite.findUnique({
-            where: { token },
-            include: {
-              createdBy: {
-                include: { globalRoles: { include: { role: true } } },
-              },
-            },
-          })
-        : null;
-
-      const creatorRoles = usedInvite?.createdBy?.globalRoles.map((gr) => gr.role.key) ?? [];
       const memberSections = uniqueSectionKeys.map((section) => ({ section, role: "member" as const }));
 
       return {
@@ -101,21 +100,26 @@ export async function POST(request: Request) {
           globalRoles: ["member"],
           sections: memberSections,
         } satisfies Member,
-        invite: usedInvite
-          ? {
-              id: usedInvite.id,
-              token: usedInvite.token,
-              label: usedInvite.label,
-              createdByRole: deriveCreatedByRole(creatorRoles),
-              createdAt: usedInvite.createdAt.toISOString(),
-              status: "used" as const,
-              memberId: user.id,
-            }
-          : undefined,
       };
     });
 
-    return Response.json(result);
+    const creatorRoles = invitePreview?.createdBy?.globalRoles.map((gr) => gr.role.key) ?? [];
+
+    return Response.json({
+      ...result,
+      invite:
+        token && invitePreview
+          ? {
+              id: invitePreview.id,
+              token: invitePreview.token,
+              label: invitePreview.label,
+              createdByRole: deriveCreatedByRole(creatorRoles),
+              createdAt: invitePreview.createdAt.toISOString(),
+              status: "used" as const,
+              memberId: result.member.id,
+            }
+          : undefined,
+    });
   } catch (error) {
     if (error instanceof InviteNotOpenError) {
       return apiError("Invite is not open", 409);

@@ -2298,7 +2298,9 @@ function OnboardingPage({
         ? "discord verified"
         : invite
           ? "invite unavailable"
-          : "discord verified";
+          : discordVerified
+            ? "discord verified"
+            : "not verified";
 
   async function submitOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2325,7 +2327,7 @@ function OnboardingPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: invite?.token,
+          ...(canUseInvite && invite?.token ? { token: invite.token } : {}),
           name: fallbackMember.name,
           handle,
           sections: selectedSections,

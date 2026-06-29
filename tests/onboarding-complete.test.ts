@@ -12,6 +12,7 @@ vi.mock("../src/auth", () => ({
 
 const mockPrismaTransaction = vi.fn();
 const mockPrismaUserFindUnique = vi.fn();
+const mockPrismaOnboardingInviteFindUnique = vi.fn();
 
 vi.mock("../src/db", () => ({
   get prisma() {
@@ -24,6 +25,11 @@ vi.mock("../src/db", () => ({
           return mockPrismaUserFindUnique;
         },
       },
+      onboardingInvite: {
+        get findUnique() {
+          return mockPrismaOnboardingInviteFindUnique;
+        },
+      },
     };
   },
 }));
@@ -31,7 +37,6 @@ vi.mock("../src/db", () => ({
 interface TransactionMock {
   onboardingInvite: {
     updateMany: ReturnType<typeof vi.fn>;
-    findUnique: ReturnType<typeof vi.fn>;
   };
   section: { findMany: ReturnType<typeof vi.fn> };
   globalRole: { findUnique: ReturnType<typeof vi.fn> };
@@ -67,7 +72,6 @@ function mockTransaction() {
   const tx: TransactionMock = {
     onboardingInvite: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      findUnique: vi.fn(),
     },
     section: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -141,7 +145,7 @@ describe("POST /api/onboarding/complete", () => {
     mockSession();
     mockDiscordVerifiedUser({ onboardingStatus: "pending", status: "invited" });
     const tx = mockTransaction();
-    tx.onboardingInvite.findUnique.mockResolvedValue({
+    mockPrismaOnboardingInviteFindUnique.mockResolvedValue({
       id: "invite-1",
       token: "open-token",
       label: "New member",
@@ -192,7 +196,7 @@ describe("POST /api/onboarding/complete", () => {
     mockDiscordVerifiedUser({ onboardingStatus: "pending", status: "invited" });
 
     const firstTx = mockTransaction();
-    firstTx.onboardingInvite.findUnique.mockResolvedValue({
+    mockPrismaOnboardingInviteFindUnique.mockResolvedValue({
       id: "invite-1",
       token: "race-token",
       label: "Race",
