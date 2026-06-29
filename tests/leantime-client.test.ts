@@ -103,6 +103,7 @@ describe("Leantime RPC client", () => {
         priority: "normal",
       }),
     ).rejects.toBeInstanceOf(LeantimeTimeoutError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("times out when headers arrive quickly but the body never completes", async () => {
@@ -130,6 +131,43 @@ describe("Leantime RPC client", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ configured: true, tasks: [] });
+  });
+
+  it("does not retry non-idempotent task creation on HTTP 500", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("server error", { status: 500 }));
+
+    const { createLeantimeTask, LeantimeTransportError } = await loadLeantime();
+
+    await expect(
+      createLeantimeTask({
+        title: "Test",
+        section: "development",
+        priority: "normal",
+      }),
+    ).rejects.toBeInstanceOf(LeantimeTransportError);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry non-idempotent comment creation on HTTP 500", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("server error", { status: 500 }));
+
+    const { addLeantimeTaskComment, LeantimeTransportError } = await loadLeantime();
+
+    await expect(addLeantimeTaskComment("task-1", "hello")).rejects.toBeInstanceOf(LeantimeTransportError);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries idempotent ticket updates on HTTP 500", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("server error", { status: 500 }))
+      .mockResolvedValueOnce(jsonRpcResult(null));
+
+    const { deleteLeantimeTask } = await loadLeantime();
+    await deleteLeantimeTask("task-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not retry HTTP 401 responses", async () => {

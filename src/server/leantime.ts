@@ -81,11 +81,21 @@ function getRpcMaxRetries() {
 }
 
 const defaultProjectId = process.env.LEANTIME_DEFAULT_PROJECT_ID || process.env.LEANTIME_CONTENT_PROJECT_ID || process.env.LEANTIME_PROJECT_ID || "1";
+// Reads and idempotent updates may retry; creates/comments must not duplicate remote records.
+const RETRYABLE_RPC_METHODS = new Set([
+  "leantime.rpc.tickets.getAll",
+  "leantime.rpc.tickets.getTicket",
+  "leantime.rpc.tickets.updateTicket",
+]);
 // The 4 WTUS projects in Leantime (clientId=1). Excludes id=6 "My Project" (default test project).
 const WTUS_PROJECT_IDS = new Set(["2", "3", "4", "5"]);
 
 function configured() {
   return Boolean(getApiKey());
+}
+
+function isRetryableRpcMethod(method: string) {
+  return RETRYABLE_RPC_METHODS.has(method);
 }
 
 function sleep(ms: number) {
@@ -214,7 +224,7 @@ async function rpc<T>(method: string, params: Record<string, unknown> = {}) {
       return await rpcAttempt<T>(method, params, requestId, correlationId, timeoutMs);
     } catch (error) {
       lastError = error;
-      if (!isLeantimeError(error) || !error.retryable || attempt >= maxRetries) {
+      if (!isLeantimeError(error) || !error.retryable || !isRetryableRpcMethod(method) || attempt >= maxRetries) {
         throw error;
       }
     }
