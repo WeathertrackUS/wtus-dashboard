@@ -241,7 +241,7 @@ describe("POST /api/onboarding/complete", () => {
     expect(mockPrismaTransaction).not.toHaveBeenCalled();
   });
 
-  it("stores section memberships as member even when lead is requested in legacy shape", async () => {
+  it("stores section memberships as member only", async () => {
     mockSession();
     mockDiscordVerifiedUser({ onboardingStatus: "pending", status: "invited" });
     const tx = mockTransaction();

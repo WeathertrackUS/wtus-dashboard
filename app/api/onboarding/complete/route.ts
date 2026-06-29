@@ -26,18 +26,18 @@ export async function POST(request: Request) {
   const { token, name, handle, sections: sectionKeys } = parsed.data;
   const uniqueSectionKeys = [...new Set(sectionKeys)];
 
-  const invitePreview = token
-    ? await prisma.onboardingInvite.findUnique({
-        where: { token },
-        include: {
-          createdBy: {
-            include: { globalRoles: { include: { role: true } } },
-          },
-        },
-      })
-    : null;
-
   try {
+    const invitePreview = token
+      ? await prisma.onboardingInvite.findUnique({
+          where: { token },
+          include: {
+            createdBy: {
+              include: { globalRoles: { include: { role: true } } },
+            },
+          },
+        })
+      : null;
+
     const result = await prisma.$transaction(async (tx) => {
       if (token) {
         const claim = await tx.onboardingInvite.updateMany({
