@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import React from "react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { signIn, signOut, useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { BotConfigView } from "./bot-config-view";
 import {
@@ -73,10 +73,6 @@ const CACHE_VERSION = "v3";
 const leantimeUrl = "https://tasks.weathertrackus.com";
 const startDiscordLogin = () => {
   if (typeof window === "undefined") return;
-  if (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost") {
-    void signIn("discord");
-    return;
-  }
   window.location.assign("/api/auth/login");
 };
 

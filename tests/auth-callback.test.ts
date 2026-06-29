@@ -18,6 +18,7 @@ vi.mock("../src/lib/oidc", () => ({
 
 // Mock Prisma
 const mockPrismaUserUpsert = vi.fn();
+const mockPrismaUserFindUnique = vi.fn();
 const mockPrismaSessionCreate = vi.fn();
 
 vi.mock("../src/db", () => ({
@@ -25,6 +26,7 @@ vi.mock("../src/db", () => ({
     return {
       user: {
         upsert: (...args: unknown[]) => mockPrismaUserUpsert(...args),
+        findUnique: (...args: unknown[]) => mockPrismaUserFindUnique(...args),
       },
       session: {
         create: (...args: unknown[]) => mockPrismaSessionCreate(...args),
@@ -57,6 +59,8 @@ describe("GET /api/auth/callback/wtus-auth", () => {
     vi.stubEnv("APP_URL", "http://localhost:3000");
     vi.stubEnv("WTUS_DASHBOARD_OIDC_CLIENT_SECRET", "test-secret");
     vi.stubEnv("AUTH_SECRET", AUTH_SECRET);
+
+    mockPrismaUserFindUnique.mockResolvedValue(null);
 
     mockGetOidcConfig.mockResolvedValue({
       _redirectUri: "http://localhost:3000/api/auth/callback/wtus-auth",
@@ -284,6 +288,49 @@ describe("GET /api/auth/callback/wtus-auth", () => {
           onboardingStatus: "pending",
         }),
       });
+    });
+
+    it("preserves verified onboarding status on re-login", async () => {
+      mockPrismaUserFindUnique.mockResolvedValue({
+        onboardingStatus: "verified",
+        status: "active",
+      });
+
+      mockAuthorizationCodeGrant.mockResolvedValue({
+        claims: () => ({
+          sub: "user-123",
+          email: "test@example.com",
+          preferred_username: "testuser",
+          wtus_member: false,
+        }),
+        id_token: "mock-id-token",
+      });
+
+      mockPrismaUserUpsert.mockResolvedValue({
+        id: "user-123",
+        discordUserId: "user-123",
+      });
+
+      const state = await createOAuthStateForNonce("/", AUTH_SECRET, STATE_NONCE);
+      const request = createRequest(
+        `http://localhost:3000/api/auth/callback/wtus-auth?code=test-code&state=${encodeURIComponent(state)}`,
+        {
+          "wtus-oauth-state": STATE_NONCE,
+          oidc_pkce: "test-pkce",
+        },
+      );
+
+      const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
+      await GET(request);
+
+      expect(mockPrismaUserUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({
+            onboardingStatus: "verified",
+            status: "active",
+          }),
+        }),
+      );
     });
   });
 

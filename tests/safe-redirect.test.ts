@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   createOAuthState,
+  getAppBaseUrl,
   resolveSafeRedirectUrl,
   sanitizeRedirectPath,
   verifyOAuthState,
@@ -47,6 +48,27 @@ describe("sanitizeRedirectPath", () => {
 
   it("rejects absolute URLs even outside production", () => {
     expect(sanitizeRedirectPath("http://127.0.0.1:3000/tasks", { isProduction: false })).toBe("/");
+  });
+});
+
+describe("getAppBaseUrl", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("uses configured APP_URL in production even with hostile forwarded headers", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("APP_URL", APP_BASE);
+
+    const request = new Request("https://evil.com/api/auth/callback/wtus-auth", {
+      headers: {
+        host: "evil.com",
+        "x-forwarded-host": "evil.com",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    expect(getAppBaseUrl(request)).toBe(APP_BASE);
   });
 });
 

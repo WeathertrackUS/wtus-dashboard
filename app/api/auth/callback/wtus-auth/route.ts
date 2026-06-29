@@ -141,6 +141,13 @@ export async function GET(request: Request) {
     const discordUserId = idTokenClaims.discord_user_id || idTokenClaims.sub;
     const isDiscordVerified = idTokenClaims.wtus_member === true;
 
+    const existingUser = await prisma.user.findUnique({
+      where: { discordUserId },
+      select: { onboardingStatus: true, status: true },
+    });
+    const isOnboarded =
+      existingUser?.onboardingStatus === "verified" && existingUser?.status === "active";
+
     const user = await prisma.user.upsert({
       where: {
         discordUserId,
@@ -155,8 +162,8 @@ export async function GET(request: Request) {
         discordUserId,
         discordHandle: idTokenClaims.preferred_username ?? null,
         discordServerVerified: isDiscordVerified,
-        status: isDiscordVerified ? "active" : "invited",
-        onboardingStatus: isDiscordVerified ? "verified" : "pending",
+        status: isOnboarded ? "active" : isDiscordVerified ? "active" : "invited",
+        onboardingStatus: isOnboarded ? "verified" : isDiscordVerified ? "verified" : "pending",
       },
       create: {
         email: idTokenClaims.email ?? null,
@@ -193,30 +200,13 @@ export async function GET(request: Request) {
       secure: useSecureCookie,
       path: "/",
     });
-    response.cookies.set("next-auth.session-token", sessionToken, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: useSecureCookie,
-      path: "/",
-    });
-    if (useSecureCookie) {
-      response.cookies.set(
-        "__Secure-next-auth.session-token",
-        sessionToken,
-        {
-          httpOnly: true,
-          sameSite: "lax",
-          secure: true,
-          path: "/",
-        },
-      );
-    }
 
     response.cookies.delete("oidc_pkce");
 
     return response;
   } catch (error) {
-    console.error("[AUTH] OIDC token exchange/verification failed:", error);
+    const message = error instanceof Error ? error.message : "unknown_error";
+    console.error("[AUTH] OIDC token exchange/verification failed:", message);
     return oauthErrorRedirect(url, appBaseUrl);
   }
 }

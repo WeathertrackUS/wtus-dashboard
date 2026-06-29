@@ -6,6 +6,7 @@ const APP_BASE = "https://dashboard.weathertrackus.com";
 const STATE_NONCE = "browser-bound-state-nonce";
 
 const mockPrismaUserUpsert = vi.fn();
+const mockPrismaUserFindUnique = vi.fn();
 const mockPrismaSessionCreate = vi.fn();
 const mockAuthorizationCodeGrant = vi.fn();
 const mockGetOidcConfig = vi.fn();
@@ -16,6 +17,9 @@ vi.mock("../src/db", () => ({
       user: {
         get upsert() {
           return mockPrismaUserUpsert;
+        },
+        get findUnique() {
+          return mockPrismaUserFindUnique;
         },
       },
       session: {
@@ -63,6 +67,7 @@ describe("wtus-auth callback redirect", () => {
     vi.stubEnv("NODE_ENV", "production");
 
     mockPrismaUserUpsert.mockResolvedValue({ id: "db-user-1" });
+    mockPrismaUserFindUnique.mockResolvedValue(null);
     mockPrismaSessionCreate.mockResolvedValue({ id: "session-1" });
     mockAuthorizationCodeGrant.mockReset();
     mockGetOidcConfig.mockReset();
@@ -168,6 +173,28 @@ describe("wtus-auth callback redirect", () => {
     );
 
     expect(response.headers.get("location")).toBe(`${APP_BASE}/`);
+  });
+
+  it("redirects to configured APP_URL after login even with hostile forwarded host", async () => {
+    const state = await createBoundState("/");
+    const { GET } = await import("../app/api/auth/callback/wtus-auth/route");
+
+    const response = await GET(
+      new Request(
+        `https://evil.com/api/auth/callback/wtus-auth?code=abc123&state=${encodeURIComponent(state)}`,
+        {
+          headers: {
+            cookie: `wtus-oauth-state=${STATE_NONCE}; oidc_pkce=mock-pkce-verifier`,
+            host: "evil.com",
+            "x-forwarded-host": "evil.com",
+            "x-forwarded-proto": "https",
+          },
+        },
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(`${APP_BASE}/`);
+    expect(mockAuthorizationCodeGrant).toHaveBeenCalled();
   });
 });
 

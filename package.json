@@ -18,7 +18,8 @@
     "start": "node .next/standalone/server.js",
     "preview": "next start --hostname 127.0.0.1",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "validate:auth": "tsx scripts/validate-auth-config.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
