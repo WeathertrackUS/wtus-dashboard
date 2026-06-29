@@ -18,6 +18,8 @@ Optional post-login destination:
 GET /api/auth/login?callbackUrl=/tasks
 ```
 
+Authorization requests `openid profile email` so the callback can read identity claims (`email`, `name`, `preferred_username`).
+
 ## Browser flow
 
 Login always happens at **auth.weathertrackus.com**. After authentication, the IdP redirects back to the dashboard callback on the same origin where the app is running.

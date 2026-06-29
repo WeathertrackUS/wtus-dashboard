@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../../src/db";
-import { getOidcConfig, authorizationCodeGrant } from "../../../../../src/lib/oidc";
+import { getOidcConfig, authorizationCodeGrant, SESSION_MAX_AGE_SECONDS } from "../../../../../src/lib/oidc";
 import {
   getAppBaseUrl,
   getAuthSecret,
@@ -168,12 +168,13 @@ export async function GET(request: Request) {
       },
     });
 
+    const sessionExpires = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000);
     const sessionToken = randomBytes(32).toString("hex");
     await prisma.session.create({
       data: {
         sessionToken,
         userId: user.id,
-        expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        expires: sessionExpires,
       },
     });
 
@@ -187,6 +188,7 @@ export async function GET(request: Request) {
       sameSite: "lax",
       secure: useSecureCookie,
       path: "/",
+      maxAge: SESSION_MAX_AGE_SECONDS,
     });
 
     response.cookies.delete("oidc_pkce");

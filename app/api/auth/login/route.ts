@@ -10,6 +10,7 @@ import {
 import {
   getOidcConfig,
   buildAuthorizationUrl,
+  OIDC_LOGIN_SCOPE,
   randomPKCECodeVerifier,
   calculatePKCECodeChallenge,
 } from "../../../../src/lib/oidc";
@@ -73,7 +74,7 @@ export async function GET(request: Request) {
     // Build authorization URL - use signed oauthState as the OIDC state parameter
     const authorizeUrl = buildAuthorizationUrl(config, {
       redirect_uri: redirectUri,
-      scope: "openid",
+      scope: OIDC_LOGIN_SCOPE,
       state: oauthState,
       code_challenge: codeChallenge,
       code_challenge_method: "S256",

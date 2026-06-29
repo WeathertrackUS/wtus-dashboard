@@ -7,7 +7,17 @@ import {
   type Configuration,
 } from "openid-client";
 
+/** Matches NextAuth default database session lifetime. */
+export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
+/** Scopes required for profile claims read in the OIDC callback. */
+export const OIDC_LOGIN_SCOPE = "openid profile email";
+
 let configPromise: Promise<Configuration> | null = null;
+
+export function resetOidcConfigCache() {
+  configPromise = null;
+}
 
 export function getOidcClientSecret() {
   const secret = process.env.WTUS_DASHBOARD_OIDC_CLIENT_SECRET?.trim() || "";
@@ -39,9 +49,14 @@ export function getOidcConfig(): Promise<Configuration> {
       clientId,
       clientSecret,
       undefined,
-    ).then((config) => {
-      return Object.assign(config, { _redirectUri: redirectUri });
-    });
+    )
+      .then((config) => {
+        return Object.assign(config, { _redirectUri: redirectUri });
+      })
+      .catch((error) => {
+        configPromise = null;
+        throw error;
+      });
   }
   return configPromise;
 }

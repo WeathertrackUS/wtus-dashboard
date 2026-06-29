@@ -8,13 +8,17 @@ const STATE_NONCE = "browser-bound-state-nonce";
 const mockAuthorizationCodeGrant = vi.fn();
 const mockGetOidcConfig = vi.fn();
 
-vi.mock("../src/lib/oidc", () => ({
-  getOidcConfig: (...args: unknown[]) => mockGetOidcConfig(...args),
-  authorizationCodeGrant: (...args: unknown[]) => mockAuthorizationCodeGrant(...args),
-  buildAuthorizationUrl: vi.fn(),
-  randomPKCECodeVerifier: vi.fn(() => "mock-code-verifier"),
-  calculatePKCECodeChallenge: vi.fn(() => Promise.resolve("mock-challenge")),
-}));
+vi.mock("../src/lib/oidc", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/oidc")>();
+  return {
+    ...actual,
+    getOidcConfig: (...args: unknown[]) => mockGetOidcConfig(...args),
+    authorizationCodeGrant: (...args: unknown[]) => mockAuthorizationCodeGrant(...args),
+    buildAuthorizationUrl: vi.fn(),
+    randomPKCECodeVerifier: vi.fn(() => "mock-code-verifier"),
+    calculatePKCECodeChallenge: vi.fn(() => Promise.resolve("mock-challenge")),
+  };
+});
 
 // Mock Prisma
 const mockPrismaUserUpsert = vi.fn();
