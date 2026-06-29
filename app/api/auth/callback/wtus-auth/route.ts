@@ -5,6 +5,8 @@ import { getOidcConfig, authorizationCodeGrant } from "../../../../../src/lib/oi
 import {
   getAppBaseUrl,
   getAuthSecret,
+  buildSessionCookieName,
+  useSecureSessionCookie,
   sanitizeRedirectPath,
   verifyOAuthState,
 } from "../../../../../src/server/safe-redirect";
@@ -21,20 +23,6 @@ type TokenClaims = {
   discord_user_id?: string;
   wtus_member?: boolean;
 };
-
-function isHttpsUrl(value: string) {
-  try {
-    return new URL(value).protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function buildSessionCookieName(appBaseUrl: string) {
-  return process.env.NODE_ENV === "production" && isHttpsUrl(appBaseUrl)
-    ? "__Secure-next-auth.session-token"
-    : "next-auth.session-token";
-}
 
 function oauthErrorRedirect(requestUrl: URL, appBaseUrl: string) {
   const response = NextResponse.redirect(new URL("/?error=OAuthCallback", appBaseUrl || requestUrl.origin));
@@ -189,7 +177,7 @@ export async function GET(request: Request) {
       },
     });
 
-    const useSecureCookie = isHttpsUrl(appBaseUrl);
+    const useSecureCookie = useSecureSessionCookie(appBaseUrl);
     const safeCallbackPath = verifiedState.callbackPath;
     const response = NextResponse.redirect(new URL(safeCallbackPath, appBaseUrl));
     clearOAuthStateCookie(response);

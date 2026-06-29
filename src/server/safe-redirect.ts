@@ -98,6 +98,29 @@ export function isLocalAppUrl(value: string) {
   }
 }
 
+function isHttpsUrl(value: string) {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Mirrors NextAuth v4 session cookie naming (see next-auth/jwt). */
+export function useSecureSessionCookie(appBaseUrl?: string) {
+  const configured = process.env.NEXTAUTH_URL?.trim() || process.env.APP_URL?.trim() || "";
+  if (configured.startsWith("https://")) return true;
+  if (process.env.VERCEL) return true;
+  if (appBaseUrl) return isHttpsUrl(appBaseUrl);
+  return false;
+}
+
+export function buildSessionCookieName(appBaseUrl?: string) {
+  return useSecureSessionCookie(appBaseUrl)
+    ? "__Secure-next-auth.session-token"
+    : "next-auth.session-token";
+}
+
 export function sanitizeRedirectPath(input: string, options: SanitizeOptions = {}) {
   const isProduction = options.isProduction ?? process.env.NODE_ENV === "production";
   const fallback = "/";
