@@ -49,7 +49,8 @@ The first usable version should include:
 - A member availability board for live event help
 - A live event dashboard for active events with temporary event roles and assignments
 - A WTUS Discord bot that connects Discord workflows to dashboard tasks and availability
-- Owner/operations-managed onboarding links
+- Discord-verified onboarding for WTUS server members (primary path)
+- Optional owner/operations-managed onboarding invite links (backup path)
 - Discord-linked onboarding page for new members
 - Account page for members to edit team preferences
 - Member profiles with multiple team roles and lead assignments

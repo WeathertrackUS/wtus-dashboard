@@ -327,9 +327,17 @@ Notes:
 - `discord_user_id` should be unique.
 - Dashboard users remain the source of truth for roles and permissions.
 
+## Onboarding
+
+Discord server membership verification is the primary onboarding gate. Verified Discord users can complete dashboard onboarding directly after sign-in.
+
+Owner and operations leads can also create optional invite links as a backup path. When an invite token is supplied, it must be open and is consumed atomically on completion.
+
+During onboarding, self-selected teams always receive the **member** section role. Lead promotion is operator-only via member management APIs.
+
 ## Onboarding Invites
 
-Invite links created by the owner or operations lead.
+Optional invite links created by the owner or operations lead.
 
 Fields:
 
@@ -344,9 +352,9 @@ Fields:
 
 Notes:
 
-- Tokens should be single-use by default.
-- Disabled or used tokens should not allow onboarding.
-- Discord server membership verification should happen before the invite creates an active dashboard user.
+- Tokens are single-use when supplied during onboarding.
+- Disabled or used tokens must not allow onboarding via the invite path.
+- Discord server membership verification is required before any onboarding completes.
 
 ## Discord Alert Channels
 
