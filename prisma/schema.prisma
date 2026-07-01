@@ -350,6 +350,8 @@ model LiveEventUpdate {
   liveEvent   LiveEvent @relation(fields: [liveEventId], references: [id], onDelete: Cascade)
   createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime  @default(now())
+
+  @@index([liveEventId, createdAt(sort: Desc)])
 }
 
 model LiveEventRole {
