@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError } from "./api-response";
+import { isLeantimeError } from "./leantime-errors";
 
 type ZodSchema = z.ZodTypeAny;
 
@@ -90,6 +91,11 @@ function isPrismaRustPanicError(err: unknown): boolean {
 }
 
 export function handleApiError(error: unknown): NextResponse {
+  if (isLeantimeError(error)) {
+    console.error("[API] Leantime error:", error.toLogFields());
+    return apiError(error.message, error.httpStatus());
+  }
+
   if (isPrismaKnownRequestError(error)) {
     switch (error.code) {
       case "P2002": {

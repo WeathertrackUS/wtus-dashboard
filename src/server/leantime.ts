@@ -1,5 +1,16 @@
 import type { Priority, SectionKey, Task, TaskComment, TaskStatus } from "../types";
 import { prisma } from "../db";
+import {
+  createCorrelationId,
+  isLeantimeError,
+  LeantimeNotConfiguredError,
+  LeantimeResponseError,
+  LeantimeTimeoutError,
+  LeantimeTransportError,
+  rpcErrorFromPayload,
+  transportErrorFromStatus,
+  type LeantimeErrorKind,
+} from "./leantime-errors";
 
 type LeantimeTaskQuery = {
   section?: SectionKey;
@@ -20,6 +31,8 @@ type LeantimeTaskInput = {
 };
 
 type JsonRpcResponse<T> = {
+  jsonrpc?: string;
+  id?: string | number;
   result?: T;
   error?: { message?: string; code?: number } | string;
 };
@@ -37,39 +50,187 @@ type LeantimeTicket = {
   projectId?: string | number | null;
 };
 
+export type LeantimeTasksResult = {
+  configured: boolean;
+  tasks: Task[];
+  error?: string;
+  errorKind?: LeantimeErrorKind;
+  degraded?: boolean;
+  correlationId?: string;
+};
+
 const defaultLeantimeUrl = "https://tasks.weathertrackus.com";
-const leantimeUrl = (process.env.LEANTIME_URL || defaultLeantimeUrl).replace(/\/$/, "");
-const apiKey = process.env.LEANTIME_API_KEY;
+const RETRY_BACKOFF_MS = [200, 500];
+
+function getLeantimeUrl() {
+  return (process.env.LEANTIME_URL || defaultLeantimeUrl).replace(/\/$/, "");
+}
+
+function getApiKey() {
+  return process.env.LEANTIME_API_KEY?.trim() || "";
+}
+
+function getRpcTimeoutMs() {
+  const parsed = Number.parseInt(process.env.LEANTIME_RPC_TIMEOUT_MS ?? "10000", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10000;
+}
+
+function getRpcMaxRetries() {
+  const parsed = Number.parseInt(process.env.LEANTIME_RPC_MAX_RETRIES ?? "2", 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 2;
+}
+
 const defaultProjectId = process.env.LEANTIME_DEFAULT_PROJECT_ID || process.env.LEANTIME_CONTENT_PROJECT_ID || process.env.LEANTIME_PROJECT_ID || "1";
+// Reads and idempotent updates may retry; creates/comments must not duplicate remote records.
+const RETRYABLE_RPC_METHODS = new Set([
+  "leantime.rpc.tickets.getAll",
+  "leantime.rpc.tickets.getTicket",
+  "leantime.rpc.tickets.updateTicket",
+]);
 // The 4 WTUS projects in Leantime (clientId=1). Excludes id=6 "My Project" (default test project).
 const WTUS_PROJECT_IDS = new Set(["2", "3", "4", "5"]);
 
 function configured() {
-  return Boolean(apiKey);
+  return Boolean(getApiKey());
+}
+
+function isRetryableRpcMethod(method: string) {
+  return RETRYABLE_RPC_METHODS.has(method);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toDegradedResult(error: unknown): LeantimeTasksResult {
+  if (isLeantimeError(error)) {
+    return {
+      configured: error.kind !== "not_configured",
+      tasks: [],
+      error: error.message,
+      errorKind: error.kind,
+      degraded: true,
+      correlationId: error.correlationId,
+    };
+  }
+
+  return {
+    configured: true,
+    tasks: [],
+    error: error instanceof Error ? error.message : "Leantime tasks unavailable",
+    errorKind: "transport",
+    degraded: true,
+  };
+}
+
+async function rpcAttempt<T>(
+  method: string,
+  params: Record<string, unknown>,
+  requestId: string,
+  correlationId: string,
+  timeoutMs: number,
+): Promise<T> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new LeantimeNotConfiguredError(method, correlationId);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${getLeantimeUrl()}/api/jsonrpc`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: requestId,
+        method,
+        params,
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new LeantimeTimeoutError(method, correlationId, timeoutMs);
+    }
+    throw new LeantimeTransportError(method, correlationId, `Leantime network error for ${method}`, { retryable: true });
+  }
+
+  let rawBody: string;
+  try {
+    rawBody = await response.text();
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new LeantimeTimeoutError(method, correlationId, timeoutMs);
+    }
+    throw new LeantimeTransportError(method, correlationId, `Leantime network error for ${method}`, { retryable: true });
+  }
+  clearTimeout(timeout);
+  let payload: JsonRpcResponse<T> | null = null;
+  if (rawBody) {
+    try {
+      payload = JSON.parse(rawBody) as JsonRpcResponse<T>;
+    } catch {
+      payload = null;
+    }
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload.error === "string"
+        ? payload.error
+        : payload?.error && typeof payload.error === "object"
+          ? payload.error.message
+          : rawBody || undefined;
+    throw transportErrorFromStatus(method, correlationId, response.status, detail);
+  }
+
+  if (!payload || payload.jsonrpc !== "2.0") {
+    throw new LeantimeResponseError(method, correlationId, `Leantime returned an invalid JSON-RPC envelope for ${method}`);
+  }
+
+  if (payload.error) {
+    throw rpcErrorFromPayload(method, correlationId, payload.error);
+  }
+
+  if (!("result" in payload)) {
+    throw new LeantimeResponseError(method, correlationId, `Leantime response missing result for ${method}`);
+  }
+
+  return payload.result as T;
 }
 
 async function rpc<T>(method: string, params: Record<string, unknown> = {}) {
-  if (!apiKey) throw new Error("LEANTIME_API_KEY is not configured");
-  const response = await fetch(`${leantimeUrl}/api/jsonrpc`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: Date.now(),
-      method,
-      params,
-    }),
-    cache: "no-store",
-  });
-  const payload = (await response.json().catch(() => null)) as JsonRpcResponse<T> | null;
-  if (!response.ok || payload?.error) {
-    const message = typeof payload?.error === "string" ? payload.error : payload?.error?.message;
-    throw new Error(message || `Leantime RPC failed: ${method}`);
+  const correlationId = createCorrelationId();
+  const requestId = correlationId;
+  const timeoutMs = getRpcTimeoutMs();
+  const maxRetries = getRpcMaxRetries();
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      await sleep(RETRY_BACKOFF_MS[attempt - 1] ?? RETRY_BACKOFF_MS.at(-1)!);
+    }
+
+    try {
+      return await rpcAttempt<T>(method, params, requestId, correlationId, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (!isLeantimeError(error) || !error.retryable || !isRetryableRpcMethod(method) || attempt >= maxRetries) {
+        throw error;
+      }
+    }
   }
-  return payload?.result as T;
+
+  throw lastError;
 }
 
 function normalizeTicketList(result: unknown): LeantimeTicket[] {
@@ -169,8 +330,16 @@ async function mergeDashboardMetadata(tasks: Task[]) {
   });
 }
 
-export async function fetchLeantimeTasks(query: LeantimeTaskQuery = {}) {
-  if (!configured()) return { configured: false, tasks: [] as Task[], error: "LEANTIME_API_KEY is not configured" };
+export async function fetchLeantimeTasks(query: LeantimeTaskQuery = {}): Promise<LeantimeTasksResult> {
+  if (!configured()) {
+    return {
+      configured: false,
+      tasks: [],
+      error: "LEANTIME_API_KEY is not configured",
+      errorKind: "not_configured",
+      degraded: true,
+    };
+  }
 
   try {
     const result = await rpc<unknown>("leantime.rpc.tickets.getAll", {
@@ -188,7 +357,7 @@ export async function fetchLeantimeTasks(query: LeantimeTaskQuery = {}) {
     if (query.assigneeId) tasks = tasks.filter((task) => task.assigneeIds.includes(query.assigneeId!));
     return { configured: true, tasks };
   } catch (error) {
-    return { configured: true, tasks: [] as Task[], error: error instanceof Error ? error.message : "Leantime tasks unavailable" };
+    return toDegradedResult(error);
   }
 }
 
@@ -300,3 +469,13 @@ export async function addLeantimeTaskComment(taskId: string, body: string) {
     createdAt: comment.createdAt.toISOString(),
   } satisfies TaskComment;
 }
+
+export {
+  isLeantimeError,
+  LeantimeError,
+  LeantimeNotConfiguredError,
+  LeantimeTimeoutError,
+  LeantimeTransportError,
+  LeantimeRpcError,
+  LeantimeResponseError,
+} from "./leantime-errors";

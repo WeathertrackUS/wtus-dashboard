@@ -48,8 +48,12 @@ export async function GET(request: Request) {
       limit,
     });
 
-    const hasError = "error" in result && Boolean(result.error);
-    return Response.json(result, hasError ? { status: result.configured ? 502 : 200 } : undefined);
+    if (result.degraded && result.error) {
+      const httpStatus = result.errorKind === "not_configured" ? 200 : result.errorKind === "timeout" ? 503 : 502;
+      return Response.json(result, { status: httpStatus });
+    }
+
+    return Response.json(result);
   } catch (error) {
     return handleApiError(error);
   }
