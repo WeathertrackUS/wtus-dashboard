@@ -1,8 +1,8 @@
-import { prisma } from "../../../src/db";
 import type { BotPlugin, PluginContext, BotEvent, WeatherAlertData } from "../../types";
 import type { Scheduler } from "../../core/scheduler";
 import { NwsApiSource } from "./sources/nws-api";
 import { SpcSource } from "./sources/spc";
+import { ingestWeatherAlertItem } from "./ingest";
 
 export interface WeatherSource {
   name: string;
@@ -39,61 +39,20 @@ export class WeatherAlertsPlugin implements BotPlugin {
   }
 
   private async processItem(source: WeatherSource, item: WeatherAlertData) {
-    const existing = await prisma.weatherAlertEvent.findUnique({
-      where: {
-        eventType_sourceEventId: {
-          eventType: item.eventType,
-          sourceEventId: item.sourceEventId,
-        },
-      },
-    });
-
-    const rawPayload = item.rawPayload != null ? JSON.parse(JSON.stringify(item.rawPayload)) : undefined;
-
-    if (existing) {
-      await prisma.weatherAlertSource.create({
-        data: {
-          eventId: existing.id,
-          sourceName: source.name,
-          sourcePriority: source.priority,
-          rawPayload,
-        },
-      });
-      await prisma.weatherAlertEvent.update({
-        where: { id: existing.id },
-        data: { lastSeenAt: new Date(), title: item.title },
-      });
+    const result = await ingestWeatherAlertItem(source, item);
+    if (result.action !== "created") {
       return;
     }
-
-    const event = await prisma.weatherAlertEvent.create({
-      data: {
-        eventType: item.eventType,
-        sourceEventId: item.sourceEventId,
-        title: item.title,
-        description: item.description,
-        severity: item.severity,
-        affectedArea: item.affectedArea,
-        rawData: rawPayload,
-        sources: {
-          create: {
-            sourceName: source.name,
-            sourcePriority: source.priority,
-            rawPayload,
-          },
-        },
-      },
-    });
 
     const botEvent: BotEvent = {
       type: "weather:alert",
       data: {
-        eventId: event.id,
-        eventType: event.eventType,
-        title: event.title,
-        description: event.description,
-        severity: event.severity,
-        affectedArea: event.affectedArea,
+        eventId: result.event.eventId,
+        eventType: result.event.eventType,
+        title: result.event.title,
+        description: result.event.description,
+        severity: result.event.severity,
+        affectedArea: result.event.affectedArea,
       },
       timestamp: new Date(),
     };

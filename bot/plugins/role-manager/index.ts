@@ -9,6 +9,8 @@ const guildId = process.env.DISCORD_GUILD_ID;
 export class RoleManagerPlugin implements BotPlugin {
   name = "role-manager";
   private client!: Client;
+  /** Coalesces overlapping syncs for the same user within one bot process. */
+  private inFlightSyncs = new Map<string, Promise<void>>();
 
   async onLoad(_ctx: PluginContext): Promise<void> {}
 
@@ -22,6 +24,19 @@ export class RoleManagerPlugin implements BotPlugin {
   }
 
   async syncUser(userId: string): Promise<void> {
+    const inFlight = this.inFlightSyncs.get(userId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const promise = this.runSyncUser(userId).finally(() => {
+      this.inFlightSyncs.delete(userId);
+    });
+    this.inFlightSyncs.set(userId, promise);
+    return promise;
+  }
+
+  private async runSyncUser(userId: string): Promise<void> {
     if (!guildId) return;
 
     const user = await prisma.user.findUnique({

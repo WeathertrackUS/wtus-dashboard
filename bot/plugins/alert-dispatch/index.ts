@@ -23,6 +23,7 @@ export class AlertDispatchPlugin implements BotPlugin {
 
   private async handleWeatherAlert(event: BotEvent) {
     const data = event.data as {
+      eventId?: string;
       eventType: string;
       title: string;
       description?: string;
@@ -30,48 +31,56 @@ export class AlertDispatchPlugin implements BotPlugin {
       affectedArea?: string;
     };
 
-    const [channels, dispatchRules] = await Promise.all([
-      prisma.discordAlertChannel.findMany({ where: { alertType: data.eventType } }),
-      prisma.dispatchRule.findMany({ where: { eventType: data.eventType, isActive: true } }),
-    ]);
+    try {
+      const [channels, dispatchRules] = await Promise.all([
+        prisma.discordAlertChannel.findMany({ where: { alertType: data.eventType } }),
+        prisma.dispatchRule.findMany({ where: { eventType: data.eventType, isActive: true } }),
+      ]);
 
-    if (channels.length === 0 && dispatchRules.length === 0) return;
+      if (channels.length === 0 && dispatchRules.length === 0) return;
 
-    const color = SEVERITY_COLORS[data.severity ?? "minor"] ?? 0xf39c12;
-    const embed = new EmbedBuilder()
-      .setTitle(data.title)
-      .setColor(color)
-      .setTimestamp(event.timestamp);
+      const color = SEVERITY_COLORS[data.severity ?? "minor"] ?? 0xf39c12;
+      const embed = new EmbedBuilder()
+        .setTitle(data.title)
+        .setColor(color)
+        .setTimestamp(event.timestamp);
 
-    if (data.description) {
-      embed.setDescription(data.description.slice(0, 2000));
-    }
-    if (data.affectedArea) {
-      embed.addFields({ name: "Affected Area", value: data.affectedArea.slice(0, 1024) });
-    }
-    embed.addFields(
-      { name: "Severity", value: data.severity ?? "unknown", inline: true },
-      { name: "Type", value: data.eventType.replace(/_/g, " "), inline: true },
-    );
-
-    const allChannelIds = new Map<string, string[]>();
-    for (const ch of channels) {
-      const existing = allChannelIds.get(ch.channelId) ?? [];
-      allChannelIds.set(ch.channelId, existing);
-    }
-    for (const rule of dispatchRules) {
-      if (rule.channelId) {
-        const existing = allChannelIds.get(rule.channelId) ?? [];
-        allChannelIds.set(rule.channelId, existing);
+      if (data.description) {
+        embed.setDescription(data.description.slice(0, 2000));
       }
-    }
+      if (data.affectedArea) {
+        embed.addFields({ name: "Affected Area", value: data.affectedArea.slice(0, 1024) });
+      }
+      embed.addFields(
+        { name: "Severity", value: data.severity ?? "unknown", inline: true },
+        { name: "Type", value: data.eventType.replace(/_/g, " "), inline: true },
+      );
 
-    for (const [channelId] of allChannelIds) {
-      await this.postToChannel(channelId, embed, dispatchRules, data);
-    }
+      const allChannelIds = new Map<string, string[]>();
+      for (const ch of channels) {
+        const existing = allChannelIds.get(ch.channelId) ?? [];
+        allChannelIds.set(ch.channelId, existing);
+      }
+      for (const rule of dispatchRules) {
+        if (rule.channelId) {
+          const existing = allChannelIds.get(rule.channelId) ?? [];
+          allChannelIds.set(rule.channelId, existing);
+        }
+      }
 
-    for (const rule of dispatchRules) {
-      await this.sendUserDMs(rule.pingUserIds, embed, data);
+      for (const [channelId] of allChannelIds) {
+        await this.postToChannel(channelId, embed, dispatchRules, data);
+      }
+
+      for (const rule of dispatchRules) {
+        await this.sendUserDMs(rule.pingUserIds, embed, data);
+      }
+    } catch (error) {
+      console.error(
+        `[AlertDispatch] Failed to dispatch weather alert (eventId=${data.eventId ?? "unknown"}, type=${data.eventType}, title=${data.title}):`,
+        error,
+      );
+      throw error;
     }
   }
 
