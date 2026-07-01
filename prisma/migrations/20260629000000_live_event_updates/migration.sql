@@ -12,5 +12,8 @@ CREATE TABLE "LiveEventUpdate" (
 -- AddForeignKey
 ALTER TABLE "LiveEventUpdate" ADD CONSTRAINT "LiveEventUpdate_liveEventId_fkey" FOREIGN KEY ("liveEventId") REFERENCES "LiveEvent"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- CreateIndex
+CREATE INDEX "LiveEventUpdate_liveEventId_createdAt_idx" ON "LiveEventUpdate"("liveEventId", "createdAt" DESC);
+
 -- AddForeignKey
 ALTER TABLE "LiveEventUpdate" ADD CONSTRAINT "LiveEventUpdate_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;

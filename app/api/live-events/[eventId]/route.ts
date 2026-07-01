@@ -26,8 +26,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ event
           where: { id: eventId },
           data: {
             ...(name !== undefined && { name }),
-            ...(description !== undefined && { description: description.trim() || null }),
-            ...(briefing !== undefined && { briefing: briefing.trim() || null }),
+            ...(description !== undefined && { description: description || null }),
+            ...(briefing !== undefined && { briefing: briefing || null }),
           },
         });
       }

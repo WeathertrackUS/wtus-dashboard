@@ -173,10 +173,10 @@ export const CreateLiveEventSchema = z.object({
 
 export const PatchLiveEventSchema = z
   .object({
-    name: z.string().trim().min(1).optional(),
-    description: z.string().optional(),
-    briefing: z.string().optional(),
-    update: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1).max(500).optional(),
+    description: z.string().trim().max(10000).optional(),
+    briefing: z.string().trim().max(10000).optional(),
+    update: z.string().trim().min(1).max(10000).optional(),
   })
   .refine(
     (data) =>
