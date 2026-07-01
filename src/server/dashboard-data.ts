@@ -1,9 +1,9 @@
 import { prisma } from "../db";
 import { fetchLeantimeTasks } from "./leantime";
+import { mapLiveEventRecord, liveEventDetailInclude } from "./live-events";
 import { deriveCreatedByRole } from "./permissions";
 import type {
   AvailabilityWindow,
-  LiveEvent,
   Member,
   OnboardingInvite,
   RecurringSchedule,
@@ -39,10 +39,7 @@ export async function getMemberDashboardData(): Promise<MemberDashboardData> {
     }),
     prisma.liveEvent.findMany({
       orderBy: { startsAt: "desc" },
-      include: {
-        roles: true,
-        assignments: { include: { section: true } },
-      },
+      include: liveEventDetailInclude,
     }),
     prisma.temporaryRoleCoverage.findMany({
       orderBy: { startsAt: "asc" },
@@ -84,30 +81,7 @@ export async function getMemberDashboardData(): Promise<MemberDashboardData> {
       notes: s.notes ?? "",
       isActive: s.isActive,
     })),
-    liveEvents: liveEvents.map<LiveEvent>((event) => ({
-      id: event.id,
-      name: event.name,
-      description: event.description ?? "",
-      status: event.status,
-      startsAt: event.startsAt.toISOString(),
-      endsAt: event.endsAt?.toISOString(),
-      briefing: event.briefing ?? "",
-      updates: [],
-      roles: event.roles.map((role) => ({
-        id: role.id,
-        name: role.name,
-        description: role.description ?? "",
-      })),
-      assignments: event.assignments.map((assignment) => ({
-        id: assignment.id,
-        memberId: assignment.userId,
-        roleId: assignment.liveEventRoleId,
-        region: assignment.region ?? undefined,
-        platform: assignment.platform ?? undefined,
-        status: assignment.status,
-        notes: assignment.notes ?? "",
-      })),
-    })),
+    liveEvents: liveEvents.map((event) => mapLiveEventRecord(event)),
     coverage: coverage.map<TemporaryCoverage>((item) => ({
       id: item.id,
       assigneeId: item.assigneeUserId,

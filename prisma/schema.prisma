@@ -147,6 +147,7 @@ model User {
   availabilityUpdates   AvailabilityUpdate[]
   recurringAvailability RecurringAvailability[]
   liveEventsCreated     LiveEvent[]             @relation("LiveEventCreatedBy")
+  liveEventUpdates      LiveEventUpdate[]
   liveEventAssignments  LiveEventAssignment[]
   assignedEventRoles    LiveEventAssignment[]   @relation("LiveEventAssignedBy")
   onboardingInvitesMade OnboardingInvite[]      @relation("OnboardingInviteCreatedBy")
@@ -334,10 +335,23 @@ model LiveEvent {
   createdBy   User?                 @relation("LiveEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   roles       LiveEventRole[]
   assignments LiveEventAssignment[]
+  updates     LiveEventUpdate[]
   tasks       LiveEventTask[]
   coverages   TemporaryRoleCoverage[]
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
+}
+
+model LiveEventUpdate {
+  id          String    @id @default(cuid())
+  liveEventId String
+  body        String
+  createdById String?
+  liveEvent   LiveEvent @relation(fields: [liveEventId], references: [id], onDelete: Cascade)
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+
+  @@index([liveEventId, createdAt(sort: Desc)])
 }
 
 model LiveEventRole {

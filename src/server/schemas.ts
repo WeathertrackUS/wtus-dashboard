@@ -171,6 +171,22 @@ export const CreateLiveEventSchema = z.object({
   briefing: z.string().optional().default(""),
 });
 
+export const PatchLiveEventSchema = z
+  .object({
+    name: z.string().trim().min(1).max(500).optional(),
+    description: z.string().trim().max(10000).optional(),
+    briefing: z.string().trim().max(10000).optional(),
+    update: z.string().trim().min(1).max(10000).optional(),
+  })
+  .refine(
+    (data) =>
+      data.name !== undefined ||
+      data.description !== undefined ||
+      data.briefing !== undefined ||
+      data.update !== undefined,
+    { message: "At least one field is required" },
+  );
+
 export const CreateAssignmentSchema = z.object({
   memberId: NonEmptyStringSchema,
   roleId: NonEmptyStringSchema,
