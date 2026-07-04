@@ -78,6 +78,11 @@ function requestOriginFromHeaders(request: Request) {
       return new URL(request.url).origin;
     }
 
+    // In production without TRUSTED_PROXY_HOSTS, don't trust forwarded headers at all
+    if (process.env.NODE_ENV === "production" && !getTrustedProxyHosts()) {
+      return new URL(request.url).origin;
+    }
+
     // In production with TRUSTED_PROXY_HOSTS configured, only trust listed hosts
     const trustedHosts = getTrustedProxyHosts();
     if (trustedHosts && process.env.NODE_ENV === "production") {

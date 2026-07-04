@@ -33,18 +33,19 @@ type TokenClaims = {
 
 function oauthErrorRedirect(requestUrl: URL, appBaseUrl: string) {
   const response = NextResponse.redirect(new URL("/?error=OAuthCallback", appBaseUrl || requestUrl.origin));
-  clearOAuthStateCookie(response);
+  const secure = appBaseUrl.startsWith("https://");
+  clearOAuthStateCookie(response, secure);
   response.cookies.delete("oidc_pkce");
   return response;
 }
 
-function clearOAuthStateCookie(response: NextResponse) {
+function clearOAuthStateCookie(response: NextResponse, secure: boolean) {
   response.cookies.set("wtus-oauth-state", "", {
     httpOnly: true,
     sameSite: "lax",
-    secure: true,
+    secure,
     maxAge: 0,
-    path: "/",
+    path: "/api/auth/callback/wtus-auth",
   });
 }
 
@@ -156,7 +157,7 @@ export async function GET(request: Request) {
     const useSecureCookie = useSecureSessionCookie(appBaseUrl);
     const safeCallbackPath = verifiedState.callbackPath;
     const response = NextResponse.redirect(new URL(safeCallbackPath, appBaseUrl));
-    clearOAuthStateCookie(response);
+    clearOAuthStateCookie(response, useSecureCookie);
 
     response.cookies.set(buildSessionCookieName(appBaseUrl), sessionToken, {
       httpOnly: true,
@@ -165,6 +166,8 @@ export async function GET(request: Request) {
       path: "/",
       maxAge: SESSION_MAX_AGE_SECONDS,
     });
+
+    response.cookies.delete("oidc_pkce");
 
     return response;
   } catch (error) {
