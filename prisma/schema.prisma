@@ -430,10 +430,11 @@ model DiscordAccount {
 
 model OnboardingInvite {
   id              String       @id @default(cuid())
-  token           String       @unique
+  tokenHash       String       @unique
   label           String
   createdByUserId String?
   status          InviteStatus @default(open)
+  expiresAt       DateTime?
   usedByUserId    String?
   usedAt          DateTime?
   createdBy       User?        @relation("OnboardingInviteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)

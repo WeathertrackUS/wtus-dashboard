@@ -42,8 +42,9 @@ function clearOAuthStateCookie(response: NextResponse) {
   response.cookies.set("wtus-oauth-state", "", {
     httpOnly: true,
     sameSite: "lax",
+    secure: true,
     maxAge: 0,
-    path: "/api/auth/callback/wtus-auth",
+    path: "/",
   });
 }
 
@@ -164,8 +165,6 @@ export async function GET(request: Request) {
       path: "/",
       maxAge: SESSION_MAX_AGE_SECONDS,
     });
-
-    response.cookies.delete("oidc_pkce");
 
     return response;
   } catch (error) {

@@ -34,6 +34,21 @@ vi.mock("../src/db", () => ({
   },
 }));
 
+const mockOnboardingCompletionLimiterAllow = vi.fn().mockReturnValue(true);
+vi.mock("../src/server/rate-limit", () => ({
+  get onboardingCompletionLimiter() {
+    return { allow: mockOnboardingCompletionLimiterAllow };
+  },
+}));
+
+vi.mock("../src/server/rate-limit", () => ({
+  onboardingCompletionLimiter: { allow: vi.fn().mockReturnValue(true), reset: vi.fn() },
+}));
+
+vi.mock("../src/server/audit", () => ({
+  logInviteAudit: vi.fn(),
+}));
+
 interface TransactionMock {
   onboardingInvite: {
     updateMany: ReturnType<typeof vi.fn>;
@@ -147,8 +162,9 @@ describe("POST /api/onboarding/complete", () => {
     const tx = mockTransaction();
     mockPrismaOnboardingInviteFindUnique.mockResolvedValue({
       id: "invite-1",
-      token: "open-token",
+      tokenHash: "hashed-token",
       label: "New member",
+      expiresAt: null,
       createdAt: new Date("2026-06-01T00:00:00Z"),
       createdBy: { globalRoles: [{ role: { key: "owner" } }] },
     });
@@ -162,7 +178,7 @@ describe("POST /api/onboarding/complete", () => {
 
     expect(res.status).toBe(200);
     expect(tx.onboardingInvite.updateMany).toHaveBeenCalledWith({
-      where: { token: "open-token", status: "open" },
+      where: { tokenHash: expect.any(String), status: "open" },
       data: expect.objectContaining({
         status: "used",
         usedByUserId: USER_ID,
@@ -198,8 +214,9 @@ describe("POST /api/onboarding/complete", () => {
     const firstTx = mockTransaction();
     mockPrismaOnboardingInviteFindUnique.mockResolvedValue({
       id: "invite-1",
-      token: "race-token",
+      tokenHash: "hashed-race-token",
       label: "Race",
+      expiresAt: null,
       createdAt: new Date("2026-06-01T00:00:00Z"),
       createdBy: { globalRoles: [{ role: { key: "owner" } }] },
     });

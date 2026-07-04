@@ -188,12 +188,13 @@ export async function getOperatorDashboardData(): Promise<OperatorDashboardData>
 
   return {
     ...base,
-    invites: invites.map<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>((invite) => ({
+    invites: invites.map<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "expiresAt" | "memberId">>((invite) => ({
       id: invite.id,
       label: invite.label,
       createdByRole: deriveCreatedByRole(invite.createdBy?.globalRoles.map((gr) => gr.role.key) ?? []),
       createdAt: invite.createdAt.toISOString(),
       status: invite.status,
+      expiresAt: invite.expiresAt?.toISOString(),
       memberId: invite.usedByUserId ?? undefined,
     })),
     reminderPreferences: reminderPreferences.map<ReminderPreference>((preference) => ({
