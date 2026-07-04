@@ -1,5 +1,5 @@
 import { prisma } from "../../../../../src/db";
-import { requirePermission, deriveCreatedByRole } from "../../../../../src/server/permissions";
+import { requireGlobalOperator, deriveCreatedByRole } from "../../../../../src/server/permissions";
 import { UpdateInviteSchema } from "../../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../../src/server/validation";
 import { logInviteAudit } from "../../../../../src/server/audit";
@@ -27,7 +27,7 @@ function toInvite(invite: {
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ inviteId: string }> }) {
-  const access = await requirePermission("invites:update");
+  const access = await requireGlobalOperator();
   if ("response" in access) return access.response;
 
   const { inviteId } = await context.params;

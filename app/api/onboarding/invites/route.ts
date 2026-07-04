@@ -1,5 +1,5 @@
 import { prisma } from "../../../../src/db";
-import { requirePermission, deriveCreatedByRole } from "../../../../src/server/permissions";
+import { requireGlobalOperator, deriveCreatedByRole } from "../../../../src/server/permissions";
 import { CreateInviteSchema } from "../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../src/server/validation";
 import { generateInviteToken, hashToken } from "../../../../src/server/token";
@@ -34,7 +34,7 @@ function toInvite(
 }
 
 export async function POST(request: Request) {
-  const access = await requirePermission("invites:create");
+  const access = await requireGlobalOperator();
   if ("response" in access) return access.response;
 
   if (!inviteCreationLimiter.allow(access.access.userId)) {
