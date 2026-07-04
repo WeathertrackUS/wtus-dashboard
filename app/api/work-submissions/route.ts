@@ -1,8 +1,7 @@
 import { prisma } from "../../../src/db";
-import { requireCurrentUser } from "../../../src/server/permissions";
+import { requirePermission } from "../../../src/server/permissions";
 import { CreateWorkSubmissionSchema } from "../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../src/server/validation";
-import { apiError } from "../../../src/server/api-response";
 import type { WorkSubmission } from "../../../src/types";
 
 function toSubmission(submission: Awaited<ReturnType<typeof prisma.workSubmission.create>>): WorkSubmission {
@@ -22,22 +21,21 @@ function toSubmission(submission: Awaited<ReturnType<typeof prisma.workSubmissio
 }
 
 export async function POST(request: Request) {
-  const access = await requireCurrentUser();
-  if ("response" in access) return access.response;
-
   const parsed = await parseBody(CreateWorkSubmissionSchema, request);
   if ("error" in parsed) return parsed.error;
 
   const { title, workDate, platform, contentType, memberRole, description, assetUrl, skills, notable } = parsed.data;
-  const targetMemberId = parsed.data.memberId || access.access.userId;
+  const targetMemberId = parsed.data.memberId || undefined;
 
-  const canSubmitForTarget = targetMemberId === access.access.userId || access.access.globalRoles.includes("owner") || access.access.globalRoles.includes("operations_lead");
-  if (!canSubmitForTarget) return apiError("You can only submit your own work", 403);
+  const access = await requirePermission("work_submissions:create", { resourceOwnerId: targetMemberId });
+  if ("response" in access) return access.response;
+
+  const effectiveMemberId = targetMemberId || access.access.userId;
 
   try {
     const submission = await prisma.workSubmission.create({
       data: {
-        userId: targetMemberId,
+        userId: effectiveMemberId,
         title: title.trim(),
         workDate: new Date(workDate),
         platform: platform.trim(),

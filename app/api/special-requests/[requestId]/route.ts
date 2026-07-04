@@ -1,27 +1,24 @@
 import { prisma } from "../../../../src/db";
-import { requireCurrentUser, isGlobalOperator } from "../../../../src/server/permissions";
+import { requirePermission } from "../../../../src/server/permissions";
 import { UpdateSpecialRequestSchema } from "../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../src/server/validation";
 import { apiError } from "../../../../src/server/api-response";
 import type { SpecialRequestStatus } from "../../../../src/types";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ requestId: string }> }) {
-  const access = await requireCurrentUser();
-  if ("response" in access) return access.response;
-
   const { requestId } = await params;
-
-  const parsed = await parseBody(UpdateSpecialRequestSchema, request);
-  if ("error" in parsed) return parsed.error;
-
-  const { status, responseNote } = parsed.data;
 
   try {
     const existing = await prisma.specialRequest.findUnique({ where: { id: requestId } });
     if (!existing) return apiError("Special request not found", 404);
-    if (existing.targetUserId !== access.access.userId && !isGlobalOperator(access.access)) {
-      return apiError("You cannot update this request", 403);
-    }
+
+    const access = await requirePermission("special_requests:update", { resourceOwnerId: existing.targetUserId });
+    if ("response" in access) return access.response;
+
+    const parsed = await parseBody(UpdateSpecialRequestSchema, request);
+    if ("error" in parsed) return parsed.error;
+
+    const { status, responseNote } = parsed.data;
 
     const newStatus = (status as SpecialRequestStatus) ?? existing.status;
     const specialRequest = await prisma.specialRequest.update({

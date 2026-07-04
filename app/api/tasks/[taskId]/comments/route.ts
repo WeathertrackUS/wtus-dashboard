@@ -1,10 +1,10 @@
 import { addLeantimeTaskComment } from "../../../../../src/server/leantime";
-import { requireCurrentUser } from "../../../../../src/server/permissions";
+import { requirePermission } from "../../../../../src/server/permissions";
 import { CreateCommentSchema } from "../../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../../src/server/validation";
 
 export async function POST(request: Request, context: { params: Promise<{ taskId: string }> }) {
-  const access = await requireCurrentUser();
+  const access = await requirePermission("comments:create");
   if ("response" in access) return access.response;
 
   const { taskId } = await context.params;

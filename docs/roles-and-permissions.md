@@ -10,6 +10,92 @@ WTUS is a team, not a corporate approval ladder. Members should have agency over
 
 Owner and operations lead should be operational peers. In normal use, they should be able to make the same broad global changes and co-run team operations. Any difference between them should be limited to rare owner-control actions, such as transferring the owner role or removing the owner account.
 
+## Permission Matrix
+
+The app uses a centralized permission matrix defined in `src/server/permissions.ts`. All routes use `requirePermission()` to enforce permissions consistently.
+
+### Tasks & Comments
+
+| Action | Owner | Ops Lead | Section Lead | Member | Scope |
+|--------|-------|----------|--------------|--------|-------|
+| Create task | ✅ | ✅ | ✅ | ✅ | section_scoped |
+| Read tasks | ✅ | ✅ | ✅ | ✅ | section_scoped |
+| Update task | ✅ | ✅ | ✅ | ✅ | section_scoped |
+| Delete task | ✅ | ✅ | ✅ | ❌ | section_scoped |
+| Add comment | ✅ | ✅ | ✅ | ✅ | section_scoped |
+
+### Availability
+
+| Action | Owner | Ops Lead | Section Lead | Member | Scope |
+|--------|-------|----------|--------------|--------|-------|
+| Create availability | ✅ | ✅ | ✅ | ✅ | self_only |
+| Read availability | ✅ | ✅ | ✅ | ✅ | section_scoped |
+| Update availability | ✅ | ✅ | ✅ | ✅ | self_only |
+| Delete availability | ✅ | ✅ | ✅ | ✅ | self_only |
+| Create recurring | ✅ | ✅ | ✅ | ✅ | self_only |
+| Read recurring | ✅ | ✅ | ✅ | ✅ | self_only |
+
+### Live Events & Assignments
+
+| Action | Owner | Ops Lead | Section Lead | Member | Scope |
+|--------|-------|----------|--------------|--------|-------|
+| Create event | ✅ | ✅ | ❌ | ❌ | global |
+| Read events | ✅ | ✅ | ✅ | ✅ | global |
+| Update event | ✅ | ✅ | ❌ | ❌ | global |
+| Create assignment | ✅ | ✅ | ❌ | ❌ | global |
+| Update assignment | ✅ | ✅ | ❌ | ✅ | self_only |
+| Delete assignment | ✅ | ✅ | ❌ | ❌ | global |
+
+### Members, Roles & Coverage
+
+| Action | Owner | Ops Lead | Section Lead | Member | Scope |
+|--------|-------|----------|--------------|--------|-------|
+| Create member | ✅ | ✅ | ❌ | ❌ | global |
+| Read members | ✅ | ✅ | ✅ | ✅ | global |
+| Update member | ✅ | ✅ | ❌ | ✅ | self_only |
+| Create coverage | ✅ | ✅ | ❌ | ❌ | global |
+| Read coverage | ✅ | ✅ | ✅ | ✅ | global |
+
+### Special Requests
+
+| Action | Owner | Ops Lead | Section Lead | Member | Scope |
+|--------|-------|----------|--------------|--------|-------|
+| Create request | ✅ | ✅ | ✅ | ✅ | global |
+| Read requests | ✅ | ✅ | ✅ | ✅ | section_scoped |
+| Update request | ✅ | ✅ | ✅ | ❌ | self_only |
+
+### Discord Configuration
+
+| Action | Owner | Ops Lead | Section Lead | Member |
+|--------|-------|----------|--------------|--------|
+| Read config | ✅ | ✅ | ❌ | ❌ |
+| Create config | ✅ | ✅ | ❌ | ❌ |
+| Update config | ✅ | ✅ | ❌ | ❌ |
+| Delete config | ✅ | ✅ | ❌ | ❌ |
+
+### Onboarding Invites
+
+| Action | Owner | Ops Lead | Section Lead | Member |
+|--------|-------|----------|--------------|--------|
+| Create invite | ✅ | ✅ | ❌ | ❌ |
+| Read invites | ✅ | ✅ | ❌ | ❌ |
+| Update invite | ✅ | ✅ | ❌ | ❌ |
+
+### Dashboard
+
+| Action | Owner | Ops Lead | Section Lead | Member |
+|--------|-------|----------|--------------|--------|
+| Read dashboard | ✅ (full) | ✅ (full) | ✅ (section) | ✅ (limited) |
+
+### Reminder Preferences & Work Submissions
+
+| Action | Owner | Ops Lead | Section Lead | Member | Scope |
+|--------|-------|----------|--------------|--------|-------|
+| Create reminders | ✅ | ✅ | ✅ | ✅ | self_only |
+| Read reminders | ✅ | ✅ | ✅ | ✅ | self_only |
+| Create submissions | ✅ | ✅ | ✅ | ✅ | self_only |
+| Read submissions | ✅ | ✅ | ✅ | ✅ | global |
+
 ## Global Roles
 
 ### Owner
@@ -25,6 +111,8 @@ Can:
 - Manage all live events and event assignments
 - Manage temporary role coverage
 - Change app settings
+- Configure Discord integration
+- Create and manage onboarding invites
 
 ### Operations Lead
 
@@ -40,6 +128,32 @@ Can:
 - Manage temporary role coverage
 - View all sections
 - Configure operational metadata like statuses and priorities
+- Configure Discord integration
+- Create and manage onboarding invites
+
+### Section Lead
+
+Section leads are the point people for their assigned sections.
+
+Can:
+
+- Create, update, and delete tasks in their section
+- View availability for members in their section
+- Create and update their own availability
+- Read live events
+- Read special requests in their section
+- Update special requests targeted at their section members
+- Read coverage assignments
+- Read members
+
+Cannot:
+
+- Create or manage live events
+- Create or manage assignments
+- Create or manage coverage
+- Create or manage onboarding invites
+- Configure Discord integration
+- Manage other members' profiles
 
 ### Member
 
@@ -47,14 +161,27 @@ Members can actively participate in and help shape the sections assigned to them
 
 Can:
 
-- View tasks and availability visible to their sections
-- Create tasks in their sections
-- Edit tasks they own or are helping with
-- Assign or self-assign section tasks when appropriate
-- Update tasks assigned to them
-- Comment on relevant tasks and update their own availability
-- Own their work without waiting on a lead for every change
-- View member and section directories
+- Create, update, and read tasks in their sections
+- Add comments on tasks
+- Create and update their own availability
+- Read live events
+- Update their own event assignments
+- Create special requests
+- Read special requests targeted at them
+- Update their own profile (name, handle)
+- Create their own work submissions
+- Create their own reminder preferences
+- Read members
+
+Cannot:
+
+- Delete tasks
+- Create or manage live events
+- Create or manage assignments
+- Create or manage coverage
+- Create or manage onboarding invites
+- Configure Discord integration
+- Update other members' profiles
 
 ## Section Roles
 
@@ -95,65 +222,27 @@ Temporary coverage should have:
 - Reason
 - Scope, such as global, section, or live event
 
-## Permission Rules
+## Permission Enforcement
 
-### Tasks
+All API routes use `requirePermission()` to enforce permissions. This function:
 
-Owner and operations lead can create, edit, assign, and close all tasks.
+1. Authenticates the user
+2. Checks if the user has the required role for the action
+3. Validates scope (section membership or resource ownership)
+4. Returns a 403 error if denied
 
-Section leads can create, edit, assign, review, and close tasks for their section.
+Example usage:
 
-Members can create, edit, assign, self-assign, update, and comment on tasks in their sections.
+```typescript
+import { requirePermission } from "../../src/server/permissions";
 
-Members should be trusted to control their own work. Leads are there for coordination, review, and help, not to bottleneck every task.
-
-### Member Availability
-
-Owner and operations lead can view and filter all member availability.
-
-Section leads can view availability for members in their section to help coordinate coverage.
-
-Members can create and update their own current or scheduled availability.
-
-### Live Events
-
-Owner and operations lead can create and manage all live events.
-
-Section leads can help manage live event assignments related to their section.
-
-Event leads can coordinate assignments inside the event they lead.
-
-Members can view live events, update their own event assignment, and help manage event work where they are involved.
-
-Live event roles are temporary and do not grant permanent section or global permissions.
-
-### Temporary Role Coverage
-
-Owner and operations lead can create, edit, and end temporary role coverage.
-
-Section leads can request temporary coverage for their section.
-
-Temporary assignees receive the permissions needed for the covered scope during the active coverage window.
-
-Temporary coverage should expire automatically at the end time.
-
-### Member Management
-
-Owner and operations lead can manage operational roles and broad global changes.
-
-Owner-only controls, if implemented, should be limited to rare account ownership controls.
-
-Section leads can help maintain their section member list and suggest role changes, but should not directly grant global roles.
-
-### Onboarding
-
-Owner and operations lead can create, disable, and review onboarding links.
-
-Onboarding should not be a normal dashboard tab. A new member should receive a link, land on a focused onboarding page, connect their Discord identity with OAuth, and choose the teams they want to be part of.
-
-Members can later update their member-focused team preferences from their account page. Lead assignments and global roles stay in the owner/operations setup area.
-
-The first verified Discord user to sign in becomes the initial owner so the local or VPS install can be administered without direct database edits. After that, owner and operations lead users manage global roles from the dashboard.
+export async function POST(request: Request) {
+  const access = await requirePermission("tasks:create", { section: "forecasting" });
+  if ("response" in access) return access.response;
+  
+  // User has permission, proceed with the operation
+}
+```
 
 ## Data Shape
 

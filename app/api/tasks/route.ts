@@ -1,16 +1,16 @@
 import { createLeantimeTask, fetchLeantimeTasks } from "../../../src/server/leantime";
-import { requireCurrentUser } from "../../../src/server/permissions";
+import { requirePermission, type SectionKey } from "../../../src/server/permissions";
 import { CreateTaskSchema, TaskQuerySchema } from "../../../src/server/schemas";
 import { parseBody, parseQueryParams, handleApiError } from "../../../src/server/validation";
 
 export async function POST(request: Request) {
-  const access = await requireCurrentUser();
-  if ("response" in access) return access.response;
-
   const parsed = await parseBody(CreateTaskSchema, request);
   if ("error" in parsed) return parsed.error;
 
   const { title, section, priority, assigneeIds, due, notes } = parsed.data;
+
+  const access = await requirePermission("tasks:create", { section: section as SectionKey | undefined });
+  if ("response" in access) return access.response;
 
   try {
     const task = await createLeantimeTask({
@@ -29,14 +29,14 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const access = await requireCurrentUser();
-  if ("response" in access) return access.response;
-
   const url = new URL(request.url);
   const parsed = parseQueryParams(TaskQuerySchema, url);
   if ("error" in parsed) return parsed.error;
 
   const { section, priority, status, assigneeId, label, limit } = parsed.data;
+
+  const access = await requirePermission("tasks:read", { section: section as SectionKey | undefined });
+  if ("response" in access) return access.response;
 
   try {
     const result = await fetchLeantimeTasks({

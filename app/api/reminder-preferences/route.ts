@@ -1,8 +1,7 @@
 import { prisma } from "../../../src/db";
-import { requireCurrentUser } from "../../../src/server/permissions";
+import { requirePermission } from "../../../src/server/permissions";
 import { CreateReminderPreferenceSchema } from "../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../src/server/validation";
-import { apiError } from "../../../src/server/api-response";
 import type { ReminderPreference } from "../../../src/types";
 
 function mapPreference(preference: Awaited<ReturnType<typeof prisma.reminderPreference.upsert>>): ReminderPreference {
@@ -23,21 +22,20 @@ function mapPreference(preference: Awaited<ReturnType<typeof prisma.reminderPref
 }
 
 export async function POST(request: Request) {
-  const access = await requireCurrentUser();
-  if ("response" in access) return access.response;
-
   const parsed = await parseBody(CreateReminderPreferenceSchema, request);
   if ("error" in parsed) return parsed.error;
 
   const { memberId, frequency, sendClearForDay, taskReminders, liveEventReminders, specialRequestReminders, preferredDays, preferredTimes, preferredPlatforms, preferredContentTypes, notes } = parsed.data;
-  const targetMemberId = memberId || access.access.userId;
+  const targetMemberId = memberId || undefined;
 
-  const canEditTarget = targetMemberId === access.access.userId || access.access.globalRoles.includes("owner") || access.access.globalRoles.includes("operations_lead");
-  if (!canEditTarget) return apiError("You can only edit your own reminders", 403);
+  const access = await requirePermission("reminders:create", { resourceOwnerId: targetMemberId });
+  if ("response" in access) return access.response;
+
+  const effectiveMemberId = targetMemberId || access.access.userId;
 
   try {
     const preference = await prisma.reminderPreference.upsert({
-      where: { userId: targetMemberId },
+      where: { userId: effectiveMemberId },
       update: {
         frequency,
         sendClearForDay: sendClearForDay ?? true,
@@ -51,7 +49,7 @@ export async function POST(request: Request) {
         notes: notes?.trim() || null,
       },
       create: {
-        userId: targetMemberId,
+        userId: effectiveMemberId,
         frequency,
         sendClearForDay: sendClearForDay ?? true,
         taskReminders: taskReminders ?? true,

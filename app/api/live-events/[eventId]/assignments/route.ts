@@ -1,11 +1,11 @@
 import { prisma } from "../../../../../src/db";
-import { requireGlobalOperator } from "../../../../../src/server/permissions";
+import { requirePermission } from "../../../../../src/server/permissions";
 import { CreateAssignmentSchema } from "../../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../../src/server/validation";
 import type { LiveEventAssignment } from "../../../../../src/types";
 
 export async function POST(request: Request, context: { params: Promise<{ eventId: string }> }) {
-  const access = await requireGlobalOperator();
+  const access = await requirePermission("assignments:create");
   if ("response" in access) return access.response;
 
   const { eventId } = await context.params;

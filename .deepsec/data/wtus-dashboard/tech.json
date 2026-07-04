@@ -1,0 +1,15 @@
+{
+  "tags": [
+    "github-actions",
+    "nextjs",
+    "node",
+    "prisma",
+    "react"
+  ],
+  "sentinels": [
+    "next.config.mjs",
+    "package.json"
+  ],
+  "detectedAt": "2026-06-28T18:12:27.592Z",
+  "rootPath": "C:\\Users\\super\\Documents\\projects\\wtus-dashboard"
+}

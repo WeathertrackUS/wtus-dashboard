@@ -23,18 +23,22 @@ vi.mock("../src/server/leantime", () => ({
   fetchLeantimeTasks: vi.fn().mockResolvedValue({ configured: false, tasks: [] }),
 }));
 
-const mockRequireCurrentUser = vi.fn();
+const mockRequirePermission = vi.fn();
 const mockIsGlobalOperator = vi.fn();
+const mockIsSectionLead = vi.fn();
 
 vi.mock("../src/server/permissions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/server/permissions")>();
   return {
     ...actual,
-    get requireCurrentUser() {
-      return (...args: unknown[]) => mockRequireCurrentUser(...args);
+    get requirePermission() {
+      return (...args: unknown[]) => mockRequirePermission(...args);
     },
     get isGlobalOperator() {
       return (...args: unknown[]) => mockIsGlobalOperator(...args);
+    },
+    get isSectionLead() {
+      return (...args: unknown[]) => mockIsSectionLead(...args);
     },
   };
 });
@@ -370,10 +374,11 @@ describe("API route role-based branching", () => {
   });
 
   it("calls getMemberDashboardData for member role", async () => {
-    mockRequireCurrentUser.mockResolvedValue({
+    mockRequirePermission.mockResolvedValue({
       access: { userId: "u1", globalRoles: ["member"], sections: [] },
     });
     mockIsGlobalOperator.mockReturnValue(false);
+    mockIsSectionLead.mockReturnValue(false);
     stubAllEmpty();
 
     const { GET } = await import("../app/api/dashboard/route");
@@ -386,10 +391,11 @@ describe("API route role-based branching", () => {
   });
 
   it("calls getOperatorDashboardData for operator role", async () => {
-    mockRequireCurrentUser.mockResolvedValue({
+    mockRequirePermission.mockResolvedValue({
       access: { userId: "u1", globalRoles: ["owner"], sections: [] },
     });
     mockIsGlobalOperator.mockReturnValue(true);
+    mockIsSectionLead.mockReturnValue(false);
     stubAllEmpty();
 
     const { GET } = await import("../app/api/dashboard/route");
@@ -402,7 +408,7 @@ describe("API route role-based branching", () => {
   });
 
   it("calls getLeadDashboardData for section lead role", async () => {
-    mockRequireCurrentUser.mockResolvedValue({
+    mockRequirePermission.mockResolvedValue({
       access: {
         userId: "u1",
         globalRoles: ["member"],
@@ -410,6 +416,7 @@ describe("API route role-based branching", () => {
       },
     });
     mockIsGlobalOperator.mockReturnValue(false);
+    mockIsSectionLead.mockReturnValue(true);
     stubAllEmpty();
 
     const { GET } = await import("../app/api/dashboard/route");
@@ -457,7 +464,7 @@ describe("error paths", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockRequireCurrentUser.mockResolvedValue({
+    mockRequirePermission.mockResolvedValue({
       response: new Response(JSON.stringify({ error: "Sign in required" }), { status: 401 }),
     });
 
@@ -468,7 +475,7 @@ describe("error paths", () => {
   });
 
   it("returns 403 when user is not verified", async () => {
-    mockRequireCurrentUser.mockResolvedValue({
+    mockRequirePermission.mockResolvedValue({
       response: new Response(JSON.stringify({ error: "Discord server verification required" }), { status: 403 }),
     });
 
@@ -479,10 +486,11 @@ describe("error paths", () => {
   });
 
   it("returns 503 when database query fails", async () => {
-    mockRequireCurrentUser.mockResolvedValue({
+    mockRequirePermission.mockResolvedValue({
       access: { userId: "u1", globalRoles: ["member"], sections: [] },
     });
     mockIsGlobalOperator.mockReturnValue(false);
+    mockIsSectionLead.mockReturnValue(false);
     mockPrismaFindMany.mockRejectedValue(new Error("Connection failed"));
 
     const { GET } = await import("../app/api/dashboard/route");

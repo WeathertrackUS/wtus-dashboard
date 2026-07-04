@@ -1,10 +1,10 @@
 import { prisma } from "../../../../../src/db";
-import { requireGlobalOperator } from "../../../../../src/server/permissions";
+import { requirePermission } from "../../../../../src/server/permissions";
 import { UpdateRoleMappingSchema } from "../../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../../src/server/validation";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
-  const access = await requireGlobalOperator();
+  const access = await requirePermission("discord_config:update");
   if ("response" in access) return access.response;
 
   const { id } = await context.params;
@@ -31,7 +31,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 }
 
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
-  const access = await requireGlobalOperator();
+  const access = await requirePermission("discord_config:delete");
   if ("response" in access) return access.response;
 
   const { id } = await context.params;

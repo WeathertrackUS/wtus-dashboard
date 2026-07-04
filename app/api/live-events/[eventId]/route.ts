@@ -1,11 +1,11 @@
 import { prisma } from "../../../../src/db";
 import { liveEventDetailInclude, mapLiveEventRecord } from "../../../../src/server/live-events";
-import { requireGlobalOperator } from "../../../../src/server/permissions";
+import { requirePermission } from "../../../../src/server/permissions";
 import { PatchLiveEventSchema } from "../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../src/server/validation";
 
 export async function PATCH(request: Request, context: { params: Promise<{ eventId: string }> }) {
-  const access = await requireGlobalOperator();
+  const access = await requirePermission("live_events:update");
   if ("response" in access) return access.response;
 
   const { eventId } = await context.params;

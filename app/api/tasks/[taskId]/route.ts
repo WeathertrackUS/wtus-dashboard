@@ -1,21 +1,18 @@
 import { deleteLeantimeTask, updateLeantimeTask } from "../../../../src/server/leantime";
-import { isGlobalOperator, requireCurrentUser } from "../../../../src/server/permissions";
-import { apiError } from "../../../../src/server/api-response";
+import { requirePermission } from "../../../../src/server/permissions";
 import { UpdateTaskSchema } from "../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../src/server/validation";
 
 export async function PATCH(request: Request, context: { params: Promise<{ taskId: string }> }) {
-  const access = await requireCurrentUser();
-  if ("response" in access) return access.response;
-  if (!isGlobalOperator(access.access)) {
-    return apiError("Task access required", 403);
-  }
-
-  const { taskId } = await context.params;
   const parsed = await parseBody(UpdateTaskSchema, request);
   if ("error" in parsed) return parsed.error;
 
   const { title, status, priority, section, assigneeIds, assigneeId, due, notes } = parsed.data;
+
+  const access = await requirePermission("tasks:update", { section });
+  if ("response" in access) return access.response;
+
+  const { taskId } = await context.params;
 
   try {
     const task = await updateLeantimeTask(taskId, {
@@ -35,11 +32,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ taskI
 }
 
 export async function DELETE(_request: Request, context: { params: Promise<{ taskId: string }> }) {
-  const access = await requireCurrentUser();
+  const access = await requirePermission("tasks:delete");
   if ("response" in access) return access.response;
-  if (!isGlobalOperator(access.access)) {
-    return apiError("Task access required", 403);
-  }
 
   const { taskId } = await context.params;
 
