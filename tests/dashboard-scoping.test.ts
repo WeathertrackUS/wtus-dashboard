@@ -23,22 +23,18 @@ vi.mock("../src/server/leantime", () => ({
   fetchLeantimeTasks: vi.fn().mockResolvedValue({ configured: false, tasks: [] }),
 }));
 
-const mockRequirePermission = vi.fn();
+const mockRequireCurrentUser = vi.fn();
 const mockIsGlobalOperator = vi.fn();
-const mockIsSectionLead = vi.fn();
 
 vi.mock("../src/server/permissions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/server/permissions")>();
   return {
     ...actual,
-    get requirePermission() {
-      return (...args: unknown[]) => mockRequirePermission(...args);
+    get requireCurrentUser() {
+      return (...args: unknown[]) => mockRequireCurrentUser(...args);
     },
     get isGlobalOperator() {
       return (...args: unknown[]) => mockIsGlobalOperator(...args);
-    },
-    get isSectionLead() {
-      return (...args: unknown[]) => mockIsSectionLead(...args);
     },
   };
 });
@@ -85,10 +81,9 @@ function stubInvite(): OnboardingInvite {
 function stubInviteFromOperationsLead() {
   return {
     id: "inv1",
-    tokenHash: "hash-abc",
+    token: "secret-token-abc",
     label: "New member invite",
     status: "open" as const,
-    expiresAt: new Date("2026-02-01T10:00:00Z"),
     createdAt: new Date("2026-01-01T10:00:00Z"),
     usedByUserId: null,
     createdBy: { globalRoles: [{ role: { key: "operations_lead" } }] },
@@ -98,10 +93,9 @@ function stubInviteFromOperationsLead() {
 function stubInviteFromOwner() {
   return {
     id: "inv2",
-    tokenHash: "hash-def",
+    token: "secret-token-def",
     label: "Owner invite",
     status: "open" as const,
-    expiresAt: new Date("2026-02-02T10:00:00Z"),
     createdAt: new Date("2026-01-02T10:00:00Z"),
     usedByUserId: null,
     createdBy: { globalRoles: [{ role: { key: "owner" } }] },
@@ -376,11 +370,10 @@ describe("API route role-based branching", () => {
   });
 
   it("calls getMemberDashboardData for member role", async () => {
-    mockRequirePermission.mockResolvedValue({
+    mockRequireCurrentUser.mockResolvedValue({
       access: { userId: "u1", globalRoles: ["member"], sections: [] },
     });
     mockIsGlobalOperator.mockReturnValue(false);
-    mockIsSectionLead.mockReturnValue(false);
     stubAllEmpty();
 
     const { GET } = await import("../app/api/dashboard/route");
@@ -393,11 +386,10 @@ describe("API route role-based branching", () => {
   });
 
   it("calls getOperatorDashboardData for operator role", async () => {
-    mockRequirePermission.mockResolvedValue({
+    mockRequireCurrentUser.mockResolvedValue({
       access: { userId: "u1", globalRoles: ["owner"], sections: [] },
     });
     mockIsGlobalOperator.mockReturnValue(true);
-    mockIsSectionLead.mockReturnValue(false);
     stubAllEmpty();
 
     const { GET } = await import("../app/api/dashboard/route");
@@ -410,7 +402,7 @@ describe("API route role-based branching", () => {
   });
 
   it("calls getLeadDashboardData for section lead role", async () => {
-    mockRequirePermission.mockResolvedValue({
+    mockRequireCurrentUser.mockResolvedValue({
       access: {
         userId: "u1",
         globalRoles: ["member"],
@@ -418,7 +410,6 @@ describe("API route role-based branching", () => {
       },
     });
     mockIsGlobalOperator.mockReturnValue(false);
-    mockIsSectionLead.mockReturnValue(true);
     stubAllEmpty();
 
     const { GET } = await import("../app/api/dashboard/route");
@@ -466,7 +457,7 @@ describe("error paths", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockRequirePermission.mockResolvedValue({
+    mockRequireCurrentUser.mockResolvedValue({
       response: new Response(JSON.stringify({ error: "Sign in required" }), { status: 401 }),
     });
 
@@ -477,7 +468,7 @@ describe("error paths", () => {
   });
 
   it("returns 403 when user is not verified", async () => {
-    mockRequirePermission.mockResolvedValue({
+    mockRequireCurrentUser.mockResolvedValue({
       response: new Response(JSON.stringify({ error: "Discord server verification required" }), { status: 403 }),
     });
 
@@ -488,11 +479,10 @@ describe("error paths", () => {
   });
 
   it("returns 503 when database query fails", async () => {
-    mockRequirePermission.mockResolvedValue({
+    mockRequireCurrentUser.mockResolvedValue({
       access: { userId: "u1", globalRoles: ["member"], sections: [] },
     });
     mockIsGlobalOperator.mockReturnValue(false);
-    mockIsSectionLead.mockReturnValue(false);
     mockPrismaFindMany.mockRejectedValue(new Error("Connection failed"));
 
     const { GET } = await import("../app/api/dashboard/route");
