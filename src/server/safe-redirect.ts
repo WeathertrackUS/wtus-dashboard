@@ -57,14 +57,40 @@ export function getAuthSecret() {
   return process.env.AUTH_SECRET?.trim() || "";
 }
 
+const ALLOWED_FORWARD_PROTOCOLS = new Set(["http:", "https:"]);
+
+function getTrustedProxyHosts(): Set<string> | null {
+  const raw = process.env.TRUSTED_PROXY_HOSTS?.trim() || "";
+  if (!raw) return null;
+  return new Set(raw.split(",").map((h) => h.trim().toLowerCase()));
+}
+
 function requestOriginFromHeaders(request: Request) {
   const headers = request.headers;
   const forwardedHost =
     headers.get("x-forwarded-host")?.split(",")[0]?.trim() || headers.get("host")?.trim() || "";
   const forwardedProto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "";
-  return forwardedHost && forwardedProto
-    ? `${forwardedProto}://${forwardedHost}`
-    : new URL(request.url).origin;
+
+  if (forwardedHost && forwardedProto) {
+    // Validate the protocol to prevent scheme injection
+    const proto = forwardedProto.endsWith(":") ? forwardedProto : `${forwardedProto}:`;
+    if (!ALLOWED_FORWARD_PROTOCOLS.has(proto.toLowerCase())) {
+      return new URL(request.url).origin;
+    }
+
+    // In production with TRUSTED_PROXY_HOSTS configured, only trust listed hosts
+    const trustedHosts = getTrustedProxyHosts();
+    if (trustedHosts && process.env.NODE_ENV === "production") {
+      const hostLower = forwardedHost.split(":")[0]?.toLowerCase() || "";
+      if (!trustedHosts.has(hostLower)) {
+        return new URL(request.url).origin;
+      }
+    }
+
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+
+  return new URL(request.url).origin;
 }
 
 export function getAppBaseUrl(request: Request) {
