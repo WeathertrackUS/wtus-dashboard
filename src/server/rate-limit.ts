@@ -77,18 +77,21 @@ export function checkRateLimit(key: string, config: RateLimitConfig): RateLimitR
 /**
  * Extract a rate-limit key from the request.
  *
- * Uses a layered approach:
- * - For authenticated routes, the caller should pass a stable user/session key
- * - For unauthenticated routes, uses the direct connection IP (bypassing
- *   X-Forwarded-For to prevent spoofing in non-proxy deployments)
+ * - Without TRUSTED_PROXY_HOSTS: uses a fixed key per namespace (prevents spoofing).
+ * - With TRUSTED_PROXY_HOSTS: trusts X-Forwarded-For (proxy overwrites it).
  *
- * The caller is responsible for providing the right key source.
+ * For authenticated routes, callers should pass a user-specific key directly
+ * to the rate limiter instead of using this function.
  */
 export function rateLimitKeyFromRequest(request: Request, namespace: string): string {
-  // Always use direct connection IP to prevent header spoofing.
-  // If behind a proxy, the direct IP will be the proxy IP, which is
-  // still useful for rate limiting (all traffic funnels through few IPs).
-  // For more precise per-client limiting, callers should pass user-specific keys.
+  const trustedHosts = process.env.TRUSTED_PROXY_HOSTS?.trim();
+  if (trustedHosts) {
+    // Behind a trusted proxy - use forwarded IP (proxy overwrites it, so not spoofable)
+    const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    const ip = forwardedFor || "unknown";
+    return `${namespace}:${ip}`;
+  }
+  // Direct exposure - use fixed key to prevent spoofing
   return `${namespace}:direct`;
 }
 

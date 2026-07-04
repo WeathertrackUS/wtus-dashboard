@@ -60,24 +60,41 @@ describe("rate limiter", () => {
 });
 
 describe("rateLimitKeyFromRequest", () => {
-  it("always returns direct key to prevent header spoofing", () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it("uses X-Forwarded-For when TRUSTED_PROXY_HOSTS is set", () => {
+    process.env.TRUSTED_PROXY_HOSTS = "proxy.internal";
+    const req = new Request("http://localhost/api/auth/login", {
+      headers: { "x-forwarded-for": "1.2.3.4, 10.0.0.1" },
+    });
+    expect(rateLimitKeyFromRequest(req, "login")).toBe("login:1.2.3.4");
+  });
+
+  it("uses 'direct' key when TRUSTED_PROXY_HOSTS is not set (prevents spoofing)", () => {
+    delete process.env.TRUSTED_PROXY_HOSTS;
     const req = new Request("http://localhost/api/auth/login", {
       headers: { "x-forwarded-for": "1.2.3.4, 10.0.0.1" },
     });
     expect(rateLimitKeyFromRequest(req, "login")).toBe("login:direct");
   });
 
-  it("returns direct key when no header present", () => {
+  it("uses 'direct' key when no header present", () => {
+    delete process.env.TRUSTED_PROXY_HOSTS;
     const req = new Request("http://localhost/api/auth/login");
     expect(rateLimitKeyFromRequest(req, "login")).toBe("login:direct");
   });
 
-  it("ignores TRUSTED_PROXY_HOSTS env var", () => {
+  it("uses 'unknown' when header missing and proxy trusted", () => {
     process.env.TRUSTED_PROXY_HOSTS = "proxy.internal";
-    const req = new Request("http://localhost/api/auth/login", {
-      headers: { "x-forwarded-for": "1.2.3.4" },
-    });
-    expect(rateLimitKeyFromRequest(req, "login")).toBe("login:direct");
-    delete process.env.TRUSTED_PROXY_HOSTS;
+    const req = new Request("http://localhost/api/auth/login");
+    expect(rateLimitKeyFromRequest(req, "login")).toBe("login:unknown");
   });
 });
