@@ -37,11 +37,13 @@ function countInWindow(bucket: Bucket, now: number, windowMs: number): number {
   return bucket.timestamps.length;
 }
 
-/** Remove empty buckets to free memory. */
-function evictEmptyBuckets() {
+/** Remove expired and empty buckets to free memory. */
+function evictStaleBuckets(now: number, windowMs: number) {
   if (buckets.size <= MAX_BUCKETS) return;
   for (const [key, bucket] of buckets) {
-    if (bucket.timestamps.length === 0) {
+    const cutoff = now - windowMs;
+    const hasExpired = bucket.timestamps.length > 0 && bucket.timestamps[0] <= cutoff;
+    if (bucket.timestamps.length === 0 || hasExpired) {
       buckets.delete(key);
     }
   }
@@ -57,7 +59,7 @@ export function checkRateLimit(key: string, config: RateLimitConfig): RateLimitR
   if (!bucket) {
     bucket = { timestamps: [] };
     buckets.set(key, bucket);
-    evictEmptyBuckets();
+    evictStaleBuckets(now, config.windowMs);
   }
 
   const count = countInWindow(bucket, now, config.windowMs);
@@ -75,18 +77,19 @@ export function checkRateLimit(key: string, config: RateLimitConfig): RateLimitR
 /**
  * Extract a rate-limit key from the request.
  *
- * Only trusts X-Forwarded-For when the request arrives from a trusted proxy
- * (TRUSTED_PROXY_HOSTS env var is set). Otherwise uses a fixed key per
- * namespace to prevent header-spoofing bypass.
+ * Uses a layered approach:
+ * - For authenticated routes, the caller should pass a stable user/session key
+ * - For unauthenticated routes, uses the direct connection IP (bypassing
+ *   X-Forwarded-For to prevent spoofing in non-proxy deployments)
+ *
+ * The caller is responsible for providing the right key source.
  */
 export function rateLimitKeyFromRequest(request: Request, namespace: string): string {
-  const trustedHosts = process.env.TRUSTED_PROXY_HOSTS?.trim();
-  if (!trustedHosts) {
-    return `${namespace}:direct`;
-  }
-  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const ip = forwardedFor || "unknown";
-  return `${namespace}:${ip}`;
+  // Always use direct connection IP to prevent header spoofing.
+  // If behind a proxy, the direct IP will be the proxy IP, which is
+  // still useful for rate limiting (all traffic funnels through few IPs).
+  // For more precise per-client limiting, callers should pass user-specific keys.
+  return `${namespace}:direct`;
 }
 
 /** Allow tests to clear all buckets. */

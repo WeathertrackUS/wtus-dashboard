@@ -45,7 +45,7 @@ function clearOAuthStateCookie(response: NextResponse, secure: boolean) {
     sameSite: "lax",
     secure,
     maxAge: 0,
-    path: "/api/auth/callback/wtus-auth",
+    path: "/",
   });
 }
 

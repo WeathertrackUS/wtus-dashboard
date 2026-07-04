@@ -75,12 +75,13 @@ function requestOriginFromHeaders(request: Request) {
     // Validate the protocol to prevent scheme injection
     const proto = forwardedProto.endsWith(":") ? forwardedProto : `${forwardedProto}:`;
     if (!ALLOWED_FORWARD_PROTOCOLS.has(proto.toLowerCase())) {
-      return new URL(request.url).origin;
+      // Protocol invalid - use configured URL or fallback to safe default
+      return getSafeFallbackOrigin();
     }
 
     // In production without TRUSTED_PROXY_HOSTS, don't trust forwarded headers at all
     if (process.env.NODE_ENV === "production" && !getTrustedProxyHosts()) {
-      return new URL(request.url).origin;
+      return getSafeFallbackOrigin();
     }
 
     // In production with TRUSTED_PROXY_HOSTS configured, only trust listed hosts
@@ -88,14 +89,42 @@ function requestOriginFromHeaders(request: Request) {
     if (trustedHosts && process.env.NODE_ENV === "production") {
       const hostLower = forwardedHost.split(":")[0]?.toLowerCase() || "";
       if (!trustedHosts.has(hostLower)) {
-        return new URL(request.url).origin;
+        return getSafeFallbackOrigin();
       }
     }
 
     return `${forwardedProto}://${forwardedHost}`;
   }
 
+  // No forwarded headers - use configured URL or request host
+  const configuredUrl = process.env.APP_URL?.trim() || process.env.NEXTAUTH_URL?.trim() || "";
+  if (configuredUrl) {
+    try {
+      return new URL(configuredUrl).origin;
+    } catch {
+      // Fall through to request host in development only
+    }
+  }
   return new URL(request.url).origin;
+}
+
+/** Return a safe origin when forwarded headers are rejected. */
+function getSafeFallbackOrigin(): string {
+  const configuredUrl = process.env.APP_URL?.trim() || process.env.NEXTAUTH_URL?.trim() || "";
+  if (configuredUrl) {
+    try {
+      return new URL(configuredUrl).origin;
+    } catch {
+      // Fall through
+    }
+  }
+  // In production, we cannot safely determine the origin from the request
+  // when forwarded headers are rejected. Return a placeholder that will
+  // cause auth redirects to fail safely rather than redirect to an attacker.
+  if (process.env.NODE_ENV === "production") {
+    return "https://unknown.invalid";
+  }
+  return "http://localhost:3000";
 }
 
 export function getAppBaseUrl(request: Request) {
