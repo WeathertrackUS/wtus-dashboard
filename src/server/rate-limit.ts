@@ -25,6 +25,9 @@ type Bucket = {
 
 const buckets = new Map<string, Bucket>();
 
+/** Max buckets before forcing a cleanup sweep. */
+const MAX_BUCKETS = 10_000;
+
 /** Prune and return the number of entries inside the window. */
 function countInWindow(bucket: Bucket, now: number, windowMs: number): number {
   const cutoff = now - windowMs;
@@ -32,6 +35,16 @@ function countInWindow(bucket: Bucket, now: number, windowMs: number): number {
     bucket.timestamps.shift();
   }
   return bucket.timestamps.length;
+}
+
+/** Remove empty buckets to free memory. */
+function evictEmptyBuckets() {
+  if (buckets.size <= MAX_BUCKETS) return;
+  for (const [key, bucket] of buckets) {
+    if (bucket.timestamps.length === 0) {
+      buckets.delete(key);
+    }
+  }
 }
 
 /**
@@ -44,6 +57,7 @@ export function checkRateLimit(key: string, config: RateLimitConfig): RateLimitR
   if (!bucket) {
     bucket = { timestamps: [] };
     buckets.set(key, bucket);
+    evictEmptyBuckets();
   }
 
   const count = countInWindow(bucket, now, config.windowMs);
@@ -60,11 +74,16 @@ export function checkRateLimit(key: string, config: RateLimitConfig): RateLimitR
 
 /**
  * Extract a rate-limit key from the request.
- * Uses X-Forwarded-For (first entry) when present, falling back to a
- * permissive "unknown" key.  In production behind a trusted proxy the
- * first IP in the chain is the real client.
+ *
+ * Only trusts X-Forwarded-For when the request arrives from a trusted proxy
+ * (TRUSTED_PROXY_HOSTS env var is set). Otherwise uses a fixed key per
+ * namespace to prevent header-spoofing bypass.
  */
 export function rateLimitKeyFromRequest(request: Request, namespace: string): string {
+  const trustedHosts = process.env.TRUSTED_PROXY_HOSTS?.trim();
+  if (!trustedHosts) {
+    return `${namespace}:direct`;
+  }
   const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const ip = forwardedFor || "unknown";
   return `${namespace}:${ip}`;
