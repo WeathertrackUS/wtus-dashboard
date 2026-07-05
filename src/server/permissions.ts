@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { authOptions } from "../auth";
 import { prisma } from "../db";
 import type { SectionKey } from "../types";
+export type { SectionKey };
 
 // ─── Role Types ──────────────────────────────────────────────────────────────
 
@@ -118,8 +119,8 @@ const PERMISSION_MATRIX: Record<PermissionAction, PermissionEntry> = {
   "availability:delete":  { owner: true, operations_lead: true, section_lead: true, member: true,  scope: "self_only" },
   "recurring:create":     { owner: true, operations_lead: true, section_lead: true, member: true,  scope: "self_only" },
   "recurring:read":       { owner: true, operations_lead: true, section_lead: true, member: true,  scope: "self_only" },
-  "recurring:update":     { owner: true, operations_lead: true, section_lead: false, member: false, scope: "self_only" },
-  "recurring:delete":     { owner: true, operations_lead: true, section_lead: false, member: false, scope: "self_only" },
+  "recurring:update":     { owner: true, operations_lead: true, section_lead: true, member: true, scope: "self_only" },
+  "recurring:delete":     { owner: true, operations_lead: true, section_lead: true, member: true, scope: "self_only" },
 
   // ── Live Events & Assignments ─────────────────────────────────────────────
   "live_events:create":   { owner: true, operations_lead: true, section_lead: false, member: false, scope: "global" },
@@ -257,7 +258,10 @@ export function checkPermission(
     if (isGlobalOperator(access)) {
       return { allowed: true };
     }
-    if (options.resourceOwnerId && options.resourceOwnerId !== access.userId) {
+    if (!options.resourceOwnerId) {
+      return { allowed: false, reason: "Resource owner ID required for self-only action" };
+    }
+    if (options.resourceOwnerId !== access.userId) {
       return { allowed: false, reason: "Can only perform this action on your own resources" };
     }
     return { allowed: true };
@@ -268,7 +272,10 @@ export function checkPermission(
     if (isGlobalOperator(access)) {
       return { allowed: true };
     }
-    if (options.section && !canWorkInSection(access, options.section)) {
+    if (!options.section) {
+      return { allowed: false, reason: "Section required for section-scoped action" };
+    }
+    if (!canWorkInSection(access, options.section)) {
       return { allowed: false, reason: `Not a member of section '${options.section}'` };
     }
     return { allowed: true };

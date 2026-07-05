@@ -191,8 +191,8 @@ describe("checkPermission", () => {
       expect(checkPermission(MEMBER, "tasks:delete").allowed).toBe(false);
     });
 
-    it("allows member to create comments", () => {
-      expect(checkPermission(MEMBER, "comments:create").allowed).toBe(true);
+    it("allows member to create comments in their section", () => {
+      expect(checkPermission(MEMBER, "comments:create", { section: "forecasting" }).allowed).toBe(true);
     });
   });
 
@@ -295,8 +295,8 @@ describe("checkPermission", () => {
       expect(checkPermission(MEMBER, "special_requests:create").allowed).toBe(true);
     });
 
-    it("allows member to read own requests", () => {
-      expect(checkPermission(MEMBER, "special_requests:read", { resourceOwnerId: "user-1" }).allowed).toBe(true);
+    it("allows member to read requests in their section", () => {
+      expect(checkPermission(MEMBER, "special_requests:read", { section: "forecasting" }).allowed).toBe(true);
     });
 
     it("allows operator to update any request", () => {
