@@ -38,6 +38,9 @@ Thumbs.db
 .idea/
 .gstack/
 
+# Security scanner output
+.deepsec/
+
 design-export/*
 deploy.tar
 deploy4.tar.gz
