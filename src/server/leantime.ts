@@ -351,6 +351,7 @@ export async function fetchLeantimeTasks(query: LeantimeTaskQuery = {}): Promise
         .map(toTask)
         .filter((task) => task.id && task.status !== "done")
     );
+    if (query.section) tasks = tasks.filter((task) => task.section === query.section);
     if (query.status) tasks = tasks.filter((task) => task.status === query.status);
     if (query.priority) tasks = tasks.filter((task) => task.priority === query.priority);
     if (query.label) tasks = tasks.filter((task) => task.title.toLowerCase().includes(query.label!.toLowerCase()));

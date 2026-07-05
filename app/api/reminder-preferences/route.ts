@@ -1,5 +1,5 @@
 import { prisma } from "../../../src/db";
-import { requirePermission } from "../../../src/server/permissions";
+import { requirePermission, requireCurrentUser } from "../../../src/server/permissions";
 import { CreateReminderPreferenceSchema } from "../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../src/server/validation";
 import type { ReminderPreference } from "../../../src/types";
@@ -26,12 +26,13 @@ export async function POST(request: Request) {
   if ("error" in parsed) return parsed.error;
 
   const { memberId, frequency, sendClearForDay, taskReminders, liveEventReminders, specialRequestReminders, preferredDays, preferredTimes, preferredPlatforms, preferredContentTypes, notes } = parsed.data;
-  const targetMemberId = memberId || undefined;
 
-  const access = await requirePermission("reminders:create", { resourceOwnerId: targetMemberId });
+  const user = await requireCurrentUser();
+  if ("response" in user) return user.response;
+  const effectiveMemberId = memberId || user.access.userId;
+
+  const access = await requirePermission("reminders:create", { resourceOwnerId: effectiveMemberId });
   if ("response" in access) return access.response;
-
-  const effectiveMemberId = targetMemberId || access.access.userId;
 
   try {
     const preference = await prisma.reminderPreference.upsert({
