@@ -25,6 +25,9 @@ type Bucket = {
 
 const buckets = new Map<string, Bucket>();
 
+/** Max buckets before forcing a cleanup sweep. */
+const MAX_BUCKETS = 10_000;
+
 /** Prune and return the number of entries inside the window. */
 function countInWindow(bucket: Bucket, now: number, windowMs: number): number {
   const cutoff = now - windowMs;
@@ -32,6 +35,18 @@ function countInWindow(bucket: Bucket, now: number, windowMs: number): number {
     bucket.timestamps.shift();
   }
   return bucket.timestamps.length;
+}
+
+/** Remove expired and empty buckets to free memory. */
+function evictStaleBuckets(now: number, windowMs: number) {
+  if (buckets.size <= MAX_BUCKETS) return;
+  for (const [key, bucket] of buckets) {
+    const cutoff = now - windowMs;
+    const hasExpired = bucket.timestamps.length > 0 && bucket.timestamps[0] <= cutoff;
+    if (bucket.timestamps.length === 0 || hasExpired) {
+      buckets.delete(key);
+    }
+  }
 }
 
 /**
@@ -44,6 +59,7 @@ export function checkRateLimit(key: string, config: RateLimitConfig): RateLimitR
   if (!bucket) {
     bucket = { timestamps: [] };
     buckets.set(key, bucket);
+    evictStaleBuckets(now, config.windowMs);
   }
 
   const count = countInWindow(bucket, now, config.windowMs);
@@ -60,14 +76,23 @@ export function checkRateLimit(key: string, config: RateLimitConfig): RateLimitR
 
 /**
  * Extract a rate-limit key from the request.
- * Uses X-Forwarded-For (first entry) when present, falling back to a
- * permissive "unknown" key.  In production behind a trusted proxy the
- * first IP in the chain is the real client.
+ *
+ * - Without TRUSTED_PROXY_HOSTS: uses a fixed key per namespace (prevents spoofing).
+ * - With TRUSTED_PROXY_HOSTS: trusts X-Forwarded-For (proxy overwrites it).
+ *
+ * For authenticated routes, callers should pass a user-specific key directly
+ * to the rate limiter instead of using this function.
  */
 export function rateLimitKeyFromRequest(request: Request, namespace: string): string {
-  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const ip = forwardedFor || "unknown";
-  return `${namespace}:${ip}`;
+  const trustedHosts = process.env.TRUSTED_PROXY_HOSTS?.trim();
+  if (trustedHosts) {
+    // Behind a trusted proxy - use forwarded IP (proxy overwrites it, so not spoofable)
+    const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    const ip = forwardedFor || "unknown";
+    return `${namespace}:${ip}`;
+  }
+  // Direct exposure - use fixed key to prevent spoofing
+  return `${namespace}:direct`;
 }
 
 /** Allow tests to clear all buckets. */

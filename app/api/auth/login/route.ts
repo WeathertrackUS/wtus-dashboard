@@ -83,13 +83,7 @@ export async function GET(request: Request) {
 
     // Store PKCE code verifier and state nonce in cookies
     setCookie(response, "oidc_pkce", codeVerifier, appBaseUrl, 600);
-    response.cookies.set("wtus-oauth-state", stateNonce, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: isLocalAppUrl(appBaseUrl) ? false : new URL(appBaseUrl).protocol === "https:",
-      maxAge: 10 * 60,
-      path: "/api/auth/callback/wtus-auth",
-    });
+    setCookie(response, "wtus-oauth-state", stateNonce, appBaseUrl, 10 * 60);
 
     return response;
   } catch (error) {
