@@ -57,14 +57,74 @@ export function getAuthSecret() {
   return process.env.AUTH_SECRET?.trim() || "";
 }
 
+const ALLOWED_FORWARD_PROTOCOLS = new Set(["http:", "https:"]);
+
+function getTrustedProxyHosts(): Set<string> | null {
+  const raw = process.env.TRUSTED_PROXY_HOSTS?.trim() || "";
+  if (!raw) return null;
+  return new Set(raw.split(",").map((h) => h.trim().toLowerCase()));
+}
+
 function requestOriginFromHeaders(request: Request) {
   const headers = request.headers;
   const forwardedHost =
     headers.get("x-forwarded-host")?.split(",")[0]?.trim() || headers.get("host")?.trim() || "";
   const forwardedProto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "";
-  return forwardedHost && forwardedProto
-    ? `${forwardedProto}://${forwardedHost}`
-    : new URL(request.url).origin;
+
+  if (forwardedHost && forwardedProto) {
+    // Validate the protocol to prevent scheme injection
+    const proto = forwardedProto.endsWith(":") ? forwardedProto : `${forwardedProto}:`;
+    if (!ALLOWED_FORWARD_PROTOCOLS.has(proto.toLowerCase())) {
+      // Protocol invalid - use configured URL or fallback to safe default
+      return getSafeFallbackOrigin();
+    }
+
+    // In production without TRUSTED_PROXY_HOSTS, don't trust forwarded headers at all
+    if (process.env.NODE_ENV === "production" && !getTrustedProxyHosts()) {
+      return getSafeFallbackOrigin();
+    }
+
+    // In production with TRUSTED_PROXY_HOSTS configured, only trust listed hosts
+    const trustedHosts = getTrustedProxyHosts();
+    if (trustedHosts && process.env.NODE_ENV === "production") {
+      const hostLower = forwardedHost.split(":")[0]?.toLowerCase() || "";
+      if (!trustedHosts.has(hostLower)) {
+        return getSafeFallbackOrigin();
+      }
+    }
+
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+
+  // No forwarded headers - use configured URL or request host
+  const configuredUrl = process.env.APP_URL?.trim() || process.env.NEXTAUTH_URL?.trim() || "";
+  if (configuredUrl) {
+    try {
+      return new URL(configuredUrl).origin;
+    } catch {
+      // Fall through to request host in development only
+    }
+  }
+  return new URL(request.url).origin;
+}
+
+/** Return a safe origin when forwarded headers are rejected. */
+function getSafeFallbackOrigin(): string {
+  const configuredUrl = process.env.APP_URL?.trim() || process.env.NEXTAUTH_URL?.trim() || "";
+  if (configuredUrl) {
+    try {
+      return new URL(configuredUrl).origin;
+    } catch {
+      // Fall through
+    }
+  }
+  // In production, we cannot safely determine the origin from the request
+  // when forwarded headers are rejected. Return a placeholder that will
+  // cause auth redirects to fail safely rather than redirect to an attacker.
+  if (process.env.NODE_ENV === "production") {
+    return "https://unknown.invalid";
+  }
+  return "http://localhost:3000";
 }
 
 export function getAppBaseUrl(request: Request) {
