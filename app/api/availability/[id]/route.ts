@@ -1,12 +1,9 @@
 import { prisma } from "../../../../src/db";
-import { requireCurrentUser } from "../../../../src/server/permissions";
+import { requirePermission } from "../../../../src/server/permissions";
 import { apiError } from "../../../../src/server/api-response";
 import { handleApiError } from "../../../../src/server/validation";
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const access = await requireCurrentUser();
-  if ("response" in access) return access.response;
-
   const { id } = await params;
 
   try {
@@ -19,9 +16,8 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       return apiError("Availability window not found", 404);
     }
 
-    if (window.userId !== access.access.userId) {
-      return apiError("You can only delete your own availability", 403);
-    }
+    const access = await requirePermission("availability:delete", { resourceOwnerId: window.userId });
+    if ("response" in access) return access.response;
 
     await prisma.availabilityWindow.delete({ where: { id } });
 

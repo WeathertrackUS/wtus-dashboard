@@ -1,5 +1,5 @@
 import { prisma } from "../../../src/db";
-import { requireGlobalOperator } from "../../../src/server/permissions";
+import { requirePermission } from "../../../src/server/permissions";
 import { CreateSpecialRequestSchema } from "../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../src/server/validation";
 import type { SpecialRequest } from "../../../src/types";
@@ -21,7 +21,7 @@ function toSpecialRequest(request: Awaited<ReturnType<typeof prisma.specialReque
 }
 
 export async function POST(request: Request) {
-  const access = await requireGlobalOperator();
+  const access = await requirePermission("special_requests:create");
   if ("response" in access) return access.response;
 
   const parsed = await parseBody(CreateSpecialRequestSchema, request);

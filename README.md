@@ -77,7 +77,9 @@ Examples:
 - Members can create, edit, own, and coordinate work in their sections.
 - A member can temporarily cover a lead role while someone is unavailable.
 
-More detail lives in [docs/roles-and-permissions.md](docs/roles-and-permissions.md).
+## Permission Matrix
+
+The app uses a centralized permission matrix defined in `src/server/permissions.ts`. All routes use `requirePermission()` to enforce permissions consistently. See [docs/roles-and-permissions.md](docs/roles-and-permissions.md) for the full matrix.
 
 ## Sections
 

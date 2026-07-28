@@ -1,8 +1,7 @@
 import { prisma } from "../../../src/db";
-import { requireCurrentUser } from "../../../src/server/permissions";
+import { requirePermission } from "../../../src/server/permissions";
 import { CreateAvailabilitySchema } from "../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../src/server/validation";
-import { apiError } from "../../../src/server/api-response";
 import type { AvailabilityWindow } from "../../../src/types";
 
 function toAvailability(window: {
@@ -26,17 +25,13 @@ function toAvailability(window: {
 }
 
 export async function POST(request: Request) {
-  const access = await requireCurrentUser();
-  if ("response" in access) return access.response;
-
   const parsed = await parseBody(CreateAvailabilitySchema, request);
   if ("error" in parsed) return parsed.error;
 
   const { memberId, status, helpRole, startsAt, endsAt, notes } = parsed.data;
 
-  if (memberId !== access.access.userId) {
-    return apiError("You can only update your own availability", 403);
-  }
+  const access = await requirePermission("availability:create", { resourceOwnerId: memberId });
+  if ("response" in access) return access.response;
 
   const startsAtDate = new Date(startsAt);
   const endsAtDate = new Date(endsAt);

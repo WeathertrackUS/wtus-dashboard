@@ -1,5 +1,5 @@
 import { prisma } from "../../../../src/db";
-import { isGlobalOperator, requireCurrentUser } from "../../../../src/server/permissions";
+import { isGlobalOperator, requirePermission } from "../../../../src/server/permissions";
 import { UpdateMemberSchema } from "../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../src/server/validation";
 import { apiError } from "../../../../src/server/api-response";
@@ -46,18 +46,16 @@ function toMember(user: {
 const OPERATOR_ONLY_FIELDS = ["globalRole", "section", "sectionRole", "sections", "discordUserId"] as const;
 
 export async function PATCH(request: Request, context: { params: Promise<{ memberId: string }> }) {
-  const access = await requireCurrentUser();
-  if ("response" in access) return access.response;
-
   const { memberId } = await context.params;
-  if (!isGlobalOperator(access.access) && memberId !== access.access.userId) {
-    return apiError("Account access required", 403);
-  }
 
   const parsed = await parseBody(UpdateMemberSchema, request);
   if ("error" in parsed) return parsed.error;
 
   const body = parsed.data;
+
+  const access = await requirePermission("members:update", { resourceOwnerId: memberId });
+  if ("response" in access) return access.response;
+
   const isOperator = isGlobalOperator(access.access);
 
   if (!isOperator) {

@@ -1,10 +1,10 @@
 import { prisma } from "../../../../src/db";
-import { requireGlobalOperator } from "../../../../src/server/permissions";
+import { requirePermission } from "../../../../src/server/permissions";
 import { CreateAlertChannelSchema } from "../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../src/server/validation";
 
 export async function GET() {
-  const access = await requireGlobalOperator();
+  const access = await requirePermission("discord_config:read");
   if ("response" in access) return access.response;
 
   try {
@@ -20,7 +20,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const access = await requireGlobalOperator();
+  const access = await requirePermission("discord_config:create");
   if ("response" in access) return access.response;
 
   const parsed = await parseBody(CreateAlertChannelSchema, request);

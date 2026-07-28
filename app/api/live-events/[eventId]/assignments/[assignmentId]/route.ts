@@ -1,5 +1,5 @@
 import { prisma } from "../../../../../../src/db";
-import { isGlobalOperator, requireCurrentUser } from "../../../../../../src/server/permissions";
+import { requirePermission } from "../../../../../../src/server/permissions";
 import { UpdateAssignmentSchema } from "../../../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../../../src/server/validation";
 import { apiError } from "../../../../../../src/server/api-response";
@@ -9,10 +9,8 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ eventId: string; assignmentId: string }> },
 ) {
-  const access = await requireCurrentUser();
-  if ("response" in access) return access.response;
-
   const { assignmentId } = await context.params;
+
   const parsed = await parseBody(UpdateAssignmentSchema, request);
   if ("error" in parsed) return parsed.error;
 
@@ -32,9 +30,8 @@ export async function PATCH(
       return apiError("Assignment not found", 404);
     }
 
-    if (!isGlobalOperator(access.access) && existingAssignment.userId !== access.access.userId) {
-      return apiError("Assignment access required", 403);
-    }
+    const access = await requirePermission("assignments:update", { resourceOwnerId: existingAssignment.userId });
+    if ("response" in access) return access.response;
 
     const assignment = await prisma.liveEventAssignment.update({
       where: { id: assignmentId },

@@ -1,11 +1,11 @@
 import { prisma } from "../../../src/db";
-import { requireGlobalOperator } from "../../../src/server/permissions";
+import { requirePermission } from "../../../src/server/permissions";
 import { CreateLiveEventSchema } from "../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../src/server/validation";
 import type { LiveEvent } from "../../../src/types";
 
 export async function POST(request: Request) {
-  const access = await requireGlobalOperator();
+  const access = await requirePermission("live_events:create");
   if ("response" in access) return access.response;
 
   const parsed = await parseBody(CreateLiveEventSchema, request);

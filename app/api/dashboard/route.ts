@@ -1,13 +1,9 @@
 import { getMemberDashboardData, getLeadDashboardData, getOperatorDashboardData } from "../../../src/server/dashboard-data";
-import { requireCurrentUser, isGlobalOperator } from "../../../src/server/permissions";
+import { requirePermission, isGlobalOperator, isSectionLead } from "../../../src/server/permissions";
 import { apiError } from "../../../src/server/api-response";
 
-function isSectionLead(access: { sections: Array<{ role: string }> }) {
-  return access.sections.some((s) => s.role === "lead");
-}
-
 export async function GET() {
-  const result = await requireCurrentUser();
+  const result = await requirePermission("dashboard:read");
   if ("response" in result) return result.response;
 
   try {
