@@ -40,11 +40,13 @@ export interface Member {
 
 export interface OnboardingInvite {
   id: string;
-  token: string;
+  /** Raw token — only present at creation time or in authorized operator flows. */
+  token?: string;
   label: string;
   createdByRole: "owner" | "operations";
   createdAt: string;
   status: "open" | "used" | "disabled";
+  expiresAt?: string;
   memberId?: string;
 }
 
@@ -207,5 +209,5 @@ export interface LeadDashboardData extends MemberDashboardData {
 
 /** What an operator sees — everything a lead sees, plus admin fields */
 export interface OperatorDashboardData extends LeadDashboardData {
-  invites: Array<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "memberId">>;
+  invites: Array<Pick<OnboardingInvite, "id" | "label" | "createdByRole" | "createdAt" | "status" | "expiresAt" | "memberId">>;
 }

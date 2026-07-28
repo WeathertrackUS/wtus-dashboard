@@ -2,25 +2,26 @@ import { prisma } from "../../../../../src/db";
 import { requireGlobalOperator, deriveCreatedByRole } from "../../../../../src/server/permissions";
 import { UpdateInviteSchema } from "../../../../../src/server/schemas";
 import { parseBody, handleApiError } from "../../../../../src/server/validation";
+import { logInviteAudit } from "../../../../../src/server/audit";
 import type { OnboardingInvite } from "../../../../../src/types";
 
 function toInvite(invite: {
   id: string;
-  token: string;
   label: string;
   status: "open" | "used" | "disabled";
   createdAt: Date;
+  expiresAt: Date | null;
   usedByUserId: string | null;
   createdBy: { globalRoles: { role: { key: string } }[] } | null;
 }): OnboardingInvite {
   const creatorRoles = invite.createdBy?.globalRoles.map((gr) => gr.role.key) ?? [];
   return {
     id: invite.id,
-    token: invite.token,
     label: invite.label,
     createdByRole: deriveCreatedByRole(creatorRoles),
     createdAt: invite.createdAt.toISOString(),
     status: invite.status,
+    expiresAt: invite.expiresAt?.toISOString(),
     memberId: invite.usedByUserId ?? undefined,
   };
 }
@@ -45,6 +46,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ invit
         },
       },
     });
+
+    if (status === "disabled") {
+      logInviteAudit({ event: "invite.disabled", inviteId: invite.id, userId: access.access.userId });
+    }
 
     return Response.json({ invite: toInvite(invite) });
   } catch (error) {
