@@ -28,7 +28,7 @@ export function getOidcClientSecret() {
     console.warn(
       "[OIDC] WTUS_DASHBOARD_OIDC_CLIENT_SECRET is not set — OIDC token exchange will fail",
     );
-    return "";
+    return undefined;
   }
   return secret;
 }
