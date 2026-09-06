@@ -430,31 +430,34 @@ describe("API route role-based branching", () => {
 });
 
 describe("isGlobalOperator", () => {
-  // These tests verify the expected logic inline because the permissions module
-  // is mocked for API route tests. If isGlobalOperator's logic changes, update these.
-  it("returns true for owner role", () => {
+  it("returns true for owner role", async () => {
+    const { isGlobalOperator } = await vi.importActual<typeof import("../src/server/permissions")>("../src/server/permissions");
     const access = { userId: "u1", globalRoles: ["owner"], sections: [] as Array<{ section: string; role: "lead" | "member" }> };
-    expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(true);
+    expect(isGlobalOperator(access)).toBe(true);
   });
 
-  it("returns true for operations_lead role", () => {
+  it("returns true for operations_lead role", async () => {
+    const { isGlobalOperator } = await vi.importActual<typeof import("../src/server/permissions")>("../src/server/permissions");
     const access = { userId: "u1", globalRoles: ["operations_lead"], sections: [] as Array<{ section: string; role: "lead" | "member" }> };
-    expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(true);
+    expect(isGlobalOperator(access)).toBe(true);
   });
 
-  it("returns true when user has both owner and member roles", () => {
+  it("returns true when user has both owner and member roles", async () => {
+    const { isGlobalOperator } = await vi.importActual<typeof import("../src/server/permissions")>("../src/server/permissions");
     const access = { userId: "u1", globalRoles: ["owner", "member"], sections: [] as Array<{ section: string; role: "lead" | "member" }> };
-    expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(true);
+    expect(isGlobalOperator(access)).toBe(true);
   });
 
-  it("returns false for member role only", () => {
+  it("returns false for member role only", async () => {
+    const { isGlobalOperator } = await vi.importActual<typeof import("../src/server/permissions")>("../src/server/permissions");
     const access = { userId: "u1", globalRoles: ["member"], sections: [] as Array<{ section: string; role: "lead" | "member" }> };
-    expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(false);
+    expect(isGlobalOperator(access)).toBe(false);
   });
 
-  it("returns false for empty roles", () => {
+  it("returns false for empty roles", async () => {
+    const { isGlobalOperator } = await vi.importActual<typeof import("../src/server/permissions")>("../src/server/permissions");
     const access = { userId: "u1", globalRoles: [] as string[], sections: [] as Array<{ section: string; role: "lead" | "member" }> };
-    expect(access.globalRoles.includes("owner") || access.globalRoles.includes("operations_lead")).toBe(false);
+    expect(isGlobalOperator(access)).toBe(false);
   });
 });
 
