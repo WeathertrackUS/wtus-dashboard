@@ -20,7 +20,7 @@ describe("getOidcClientSecret", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const { getOidcClientSecret } = await import("../src/lib/oidc");
-    expect(getOidcClientSecret()).toBe("");
+    expect(getOidcClientSecret()).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(
       "[OIDC] WTUS_DASHBOARD_OIDC_CLIENT_SECRET is not set — OIDC token exchange will fail",
     );
